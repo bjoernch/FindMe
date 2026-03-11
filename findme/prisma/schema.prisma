@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  avatar       String?
+  passwordHash String
+  role         String   @default("MEMBER")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  devices      Device[]
+  sharesOwned  Share[]  @relation("ShareOwner")
+  sharesTarget Share[]  @relation("ShareTarget")
+
+  peopleSharesSent     PeopleShare[] @relation("PeopleShareFrom")
+  peopleSharesReceived PeopleShare[] @relation("PeopleShareTo")
+  qrSessions           QrSession[]
+  passkeys             Passkey[]
+  geofences            Geofence[]
+  pushTokens           PushToken[]
+}
+
+model Device {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  platform  String
+  token     String    @unique
+  isActive  Boolean   @default(true)
+  isPrimary Boolean   @default(false)
+  lastSeen  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locations Location[]
+
+  @@index([token])
+  @@index([userId])
+}
+
+model Location {
+  id           String   @id @default(cuid())
+  deviceId     String
+  lat          Float
+  lng          Float
+  accuracy     Float?
+  altitude     Float?
+  speed        Float?
+  heading      Float?
+  batteryLevel Float?
+  timestamp    DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, timestamp])
+  @@index([deviceId])
+}
+
+model Share {
+  id           String    @id @default(cuid())
+  ownerId      String
+  targetUserId String?
+  shareToken   String    @unique
+  expiresAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  owner  User  @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  target User? @relation("ShareTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([shareToken])
+  @@index([ownerId])
+}
+
+model PeopleShare {
+  id         String   @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  fromUser User @relation("PeopleShareFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("PeopleShareTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([toUserId, status])
+}
+
+model Passkey {
+  id              String   @id @default(cuid())
+  userId          String
+  credentialId    String   @unique
+  publicKey       String   // base64url-encoded
+  counter         Int      @default(0)
+  deviceType      String   @default("singleDevice")
+  backedUp        Boolean  @default(false)
+  transports      String?  // JSON array string
+  name            String   @default("Passkey")
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([credentialId])
+}
+
+model QrSession {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
+
+model Geofence {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  lat       Float
+  lng       Float
+  radiusM   Float    @default(200)
+  isActive  Boolean  @default(true)
+  onEnter   Boolean  @default(true)
+  onExit    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events GeofenceEvent[]
+
+  @@index([userId])
+}
+
+model GeofenceEvent {
+  id          String   @id @default(cuid())
+  geofenceId  String
+  deviceName  String
+  eventType   String   // "ENTER" or "EXIT"
+  lat         Float
+  lng         Float
+  timestamp   DateTime @default(now())
+
+  geofence Geofence @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
+
+  @@index([geofenceId, timestamp])
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   @default("expo")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

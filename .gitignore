@@ -1,0 +1,30 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets & env
+.env
+.env.local
+.env.*.local
+*.pem
+*.jks
+*.p12
+*.key
+
+# Database files
+*.db
+*.db-journal
+
+# Build artifacts
+*.apk
+
+# Misc
+*.pdf
+plan.md
+.claude/
