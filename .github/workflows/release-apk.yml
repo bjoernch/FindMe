@@ -68,18 +68,15 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Decode keystore
-        id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > /tmp/findme-release.jks
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "Using release keystore"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No release keystore configured — APK will be signed with debug keystore"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 secret is not set. Cannot build release APK without signing keystore."
+            exit 1
           fi
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/findme-release.jks
+          echo "Keystore decoded successfully"
 
       - name: Patch version in build.gradle
         working-directory: findme-app/android/app
@@ -94,7 +91,7 @@ jobs:
       - name: Build release APK
         working-directory: findme-app/android
         env:
-          RELEASE_KEYSTORE_PATH: ${{ steps.keystore.outputs.available == 'true' && '/tmp/findme-release.jks' || '' }}
+          RELEASE_KEYSTORE_PATH: /tmp/findme-release.jks
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
