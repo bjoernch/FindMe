@@ -12,6 +12,8 @@ import type {
   UserPublic,
   PersonWithDevices,
   PeopleSharePublic,
+  ShareLink,
+  ShareExpiry,
   QrAuthRequest,
   QrAuthResponse,
 } from "./types";
@@ -322,6 +324,25 @@ export class FindMeClient {
 
   async getShares(): Promise<ApiResponse<PeopleSharePublic[]>> {
     return this.request<PeopleSharePublic[]>("/api/people/shares");
+  }
+
+  // ── Share Links ───────────────────────────────────────────────
+
+  async getShareLinks(): Promise<ApiResponse<ShareLink[]>> {
+    return this.request<ShareLink[]>("/api/share");
+  }
+
+  async createShareLink(expiresIn?: ShareExpiry): Promise<ApiResponse<ShareLink>> {
+    return this.request<ShareLink>("/api/share", {
+      method: "POST",
+      body: JSON.stringify({ expiresIn: expiresIn ?? "24h" }),
+    });
+  }
+
+  async revokeShareLink(id: string): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>(`/api/share?id=${id}`, {
+      method: "DELETE",
+    });
   }
 
   // ── Avatar ──────────────────────────────────────────────────

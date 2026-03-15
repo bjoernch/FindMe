@@ -4,6 +4,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { usePolling } from "../../lib/use-polling";
@@ -38,6 +39,7 @@ function getPersonLastSeen(person: PersonWithDevices): string | null {
 export default function PeopleScreen() {
   const { apiClient } = useAuth();
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = createStyles(colors);
   const [showInvite, setShowInvite] = useState(false);
   const [showPending, setShowPending] = useState(false);
@@ -89,16 +91,40 @@ export default function PeopleScreen() {
             {people.map((person) => {
               const lastSeen = getPersonLastSeen(person);
               const online = isOnline(lastSeen);
-              const deviceCount = person.devices.filter((d) => d.latestLocation).length;
+              const devicesWithLoc = person.devices.filter((d) => d.latestLocation);
+              const deviceCount = devicesWithLoc.length;
+              const hasLocation = deviceCount > 0;
+
+              function handlePress() {
+                if (!hasLocation) return;
+                // Find the most recent device location
+                const mostRecent = devicesWithLoc.reduce((a, b) => {
+                  const aTime = new Date(a.latestLocation!.timestamp).getTime();
+                  const bTime = new Date(b.latestLocation!.timestamp).getTime();
+                  return bTime > aTime ? b : a;
+                });
+                const loc = mostRecent.latestLocation!;
+                router.push({ pathname: "/", params: { focusLat: String(loc.lat), focusLng: String(loc.lng) } });
+              }
+
               return (
-                <View key={person.user.id} style={styles.contactCard}>
+                <TouchableOpacity
+                  key={person.user.id}
+                  style={styles.contactCard}
+                  onPress={handlePress}
+                  activeOpacity={hasLocation ? 0.6 : 1}
+                >
                   <AvatarCircle name={person.user.name} size={48} showOnline isOnline={online} />
                   <View style={styles.contactInfo}>
                     <Text style={styles.contactName}>{person.user.name || person.user.email}</Text>
                     <Text style={styles.contactMeta}>{online ? "Online" : formatLastSeen(lastSeen)}{deviceCount > 0 && ` · ${deviceCount} device${deviceCount !== 1 ? "s" : ""}`}</Text>
                   </View>
-                  <View style={[styles.statusDot, { backgroundColor: online ? colors.onlineGreen : colors.offlineGray }]} />
-                </View>
+                  {hasLocation ? (
+                    <Ionicons name="navigate" size={18} color={colors.accent} />
+                  ) : (
+                    <View style={[styles.statusDot, { backgroundColor: online ? colors.onlineGreen : colors.offlineGray }]} />
+                  )}
+                </TouchableOpacity>
               );
             })}
           </View>

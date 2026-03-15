@@ -125,6 +125,18 @@ export interface PersonWithDevices {
   devices: DeviceWithLocation[];
 }
 
+// ── Share Links ──────────────────────────────────────────────────
+
+export interface ShareLink {
+  id: string;
+  ownerId: string;
+  targetUserId: string | null;
+  shareToken: string;
+  expiresAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
 // ── QR Pairing ────────────────────────────────────────────────────
 
 export interface QrAuthRequest {

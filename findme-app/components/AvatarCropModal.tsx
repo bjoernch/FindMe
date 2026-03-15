@@ -102,12 +102,12 @@ export function AvatarCropModal({ imageUri, visible, onConfirm, onCancel }: Prop
 
   async function handleConfirm() {
     try {
-      // Calculate the fitted image dimensions
       const containerW = containerSize.w;
       const containerH = containerSize.h;
       const imgAspect = imageSize.w / imageSize.h;
       const containerAspect = containerW / containerH;
 
+      // The image is displayed with resizeMode="contain", so compute fitted dimensions
       let fittedW: number, fittedH: number;
       if (imgAspect > containerAspect) {
         fittedW = containerW;
@@ -117,22 +117,40 @@ export function AvatarCropModal({ imageUri, visible, onConfirm, onCancel }: Prop
         fittedW = containerH * imgAspect;
       }
 
-      // Scale factor from fitted to original
-      const fitScale = imageSize.w / fittedW;
+      // Where the fitted image starts within the container (letterbox offset)
+      const imgOffsetX = (containerW - fittedW) / 2;
+      const imgOffsetY = (containerH - fittedH) / 2;
 
-      // Circle center in container coords
+      const s = scaleValue.current;
+      const tx = translateXValue.current;
+      const ty = translateYValue.current;
+
+      // The circle overlay is centered in the container
       const circleCenterX = containerW / 2;
       const circleCenterY = containerH / 2;
+      const circleRadius = CIRCLE_SIZE / 2;
 
-      // Image center in container coords (with transforms)
-      const imgCenterX = containerW / 2 + translateXValue.current;
-      const imgCenterY = containerH / 2 + translateYValue.current;
+      // The image (after transform) has its center at:
+      //   containerCenter + translate
+      // And it spans fittedW*s x fittedH*s pixels.
+      // The top-left of the transformed image in container coords:
+      const imgLeft = imgOffsetX + tx - (fittedW * (s - 1)) / 2;
+      const imgTop = imgOffsetY + ty - (fittedH * (s - 1)) / 2;
 
-      // Circle top-left relative to scaled image
-      const s = scaleValue.current;
-      const cropX = ((circleCenterX - imgCenterX) / s + fittedW / 2) * fitScale - (CIRCLE_SIZE / 2 / s) * fitScale;
-      const cropY = ((circleCenterY - imgCenterY) / s + fittedH / 2) * fitScale - (CIRCLE_SIZE / 2 / s) * fitScale;
-      const cropSize = (CIRCLE_SIZE / s) * fitScale;
+      // Circle top-left in container coords → relative to transformed image
+      const circleLeftInImg = (circleCenterX - circleRadius - imgLeft) / (fittedW * s);
+      const circleTopInImg = (circleCenterY - circleRadius - imgTop) / (fittedH * s);
+      const circleSizeInImg = CIRCLE_SIZE / (fittedW * s);
+      const circleSizeInImgY = CIRCLE_SIZE / (fittedH * s);
+
+      // Map to original image pixel coordinates
+      const cropX = circleLeftInImg * imageSize.w;
+      const cropY = circleTopInImg * imageSize.h;
+      const cropW = circleSizeInImg * imageSize.w;
+      const cropH = circleSizeInImgY * imageSize.h;
+
+      // Use the smaller dimension to get a square crop
+      const cropSize = Math.min(cropW, cropH);
 
       // Clamp to image bounds
       const x = Math.max(0, Math.round(cropX));

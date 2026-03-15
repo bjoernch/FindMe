@@ -47,6 +47,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="sharing"
+        options={{
+          title: "Sharing",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="link" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",

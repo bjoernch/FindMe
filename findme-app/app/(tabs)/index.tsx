@@ -4,6 +4,7 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { usePolling } from "../../lib/use-polling";
@@ -220,11 +221,26 @@ if (bounds.length > 0) {
 export default function MapScreen() {
   const { apiClient, serverUrl, isLoading: authLoading } = useAuth();
   const { colors, effectiveMode } = useTheme();
+  const { focusLat, focusLng } = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
   const styles = createStyles(colors);
   const webViewRef = useRef<WebView>(null);
   const [tileLayerId, setTileLayerId] = useState<MapTileLayerId>(effectiveMode === "dark" ? "dark" : "light");
   const [showPicker, setShowPicker] = useState(false);
   const [userChoseTile, setUserChoseTile] = useState(false);
+  const lastFocusRef = useRef<string | null>(null);
+
+  // When navigated to with focus coordinates, pan the map
+  useEffect(() => {
+    if (focusLat && focusLng) {
+      const key = `${focusLat},${focusLng}`;
+      if (lastFocusRef.current !== key) {
+        lastFocusRef.current = key;
+        webViewRef.current?.injectJavaScript(
+          `map.setView([${focusLat}, ${focusLng}], 16); true;`
+        );
+      }
+    }
+  }, [focusLat, focusLng]);
 
   // Load persisted tile layer preference
   useEffect(() => {
