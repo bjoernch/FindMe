@@ -7,39 +7,11 @@ import {
   startRegistration,
   browserSupportsWebAuthn,
 } from "@simplewebauthn/browser";
-import { useI18n } from "@/lib/i18n/context";
-import type { Locale } from "@/lib/i18n/translations";
 
-function LanguageSelector() {
-  const { locale, setLocale, locales } = useI18n();
 
-  return (
-    <div className="bg-card border border-edge rounded-xl p-6 mb-6">
-      <h2 className="text-lg font-semibold text-heading mb-2">Language</h2>
-      <p className="text-sub text-sm mb-4">
-        Choose your preferred language for the dashboard.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {(Object.entries(locales) as [Locale, string][]).map(([code, name]) => (
-          <button
-            key={code}
-            onClick={() => setLocale(code)}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-              locale === code
-                ? "bg-blue-600 text-white"
-                : "bg-input text-sub hover:text-heading hover:bg-hover"
-            }`}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function SettingsPage() {
-  const { t } = useI18n();
+
   const { data: session } = useSession();
   const [name, setName] = useState(session?.user?.name || "");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -344,7 +316,7 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-heading mb-6">{t("settings.title")}</h1>
+      <h1 className="text-2xl font-bold text-heading mb-6">"Settings"</h1>
 
       {message && (
         <div
@@ -358,8 +330,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Language Selection */}
-      <LanguageSelector />
 
       {/* Mobile App Pairing */}
       <div className="bg-card border border-edge rounded-xl p-6 mb-6">

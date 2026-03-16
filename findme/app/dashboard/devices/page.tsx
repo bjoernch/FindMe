@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { TableSkeleton } from "@/components/loading-skeleton";
-import { useI18n } from "@/lib/i18n/context";
+
 import type { DevicePublic, ApiResponse } from "@/types/api";
 
 export default function DevicesPage() {
-  const { t } = useI18n();
+
   const [devices, setDevices] = useState<DevicePublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
@@ -119,7 +119,7 @@ export default function DevicesPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-heading">{t("devices.title")}</h1>
+        <h1 className="text-2xl font-bold text-heading">"Devices"</h1>
         <button
           onClick={() => {
             setShowRegister(!showRegister);
@@ -127,7 +127,7 @@ export default function DevicesPage() {
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
         >
-          {showRegister ? t("common.cancel") : t("devices.register")}
+          {showRegister ? "Cancel" : "Register Device"}
         </button>
       </div>
 
@@ -198,7 +198,7 @@ export default function DevicesPage() {
         <TableSkeleton />
       ) : devices.length === 0 ? (
         <div className="bg-card border border-edge rounded-xl p-12 text-center">
-          <p className="text-sub text-lg mb-2">{t("devices.noDevices")}</p>
+          <p className="text-sub text-lg mb-2">"No devices registered"</p>
           <p className="text-hint text-sm">
             Register a device to start tracking locations.
           </p>
@@ -265,14 +265,14 @@ export default function DevicesPage() {
                     href={`/dashboard/devices/${device.id}/history`}
                     className="text-link hover:text-link-hover text-sm"
                   >
-                    {t("devices.history")}
+                    "History"
                   </Link>
                   {device.isActive && !device.isPrimary && (
                     <button
                       onClick={() => setPrimaryDevice(device.id)}
                       className="text-warn-fg hover:text-warn-fg text-sm"
                     >
-                      {t("devices.setPrimary")}
+                      "Set Primary"
                     </button>
                   )}
                   <button
@@ -282,14 +282,14 @@ export default function DevicesPage() {
                     }}
                     className="text-sub hover:text-heading text-sm"
                   >
-                    {t("devices.rename")}
+                    "Rename"
                   </button>
                   {device.isActive && (
                     <button
                       onClick={() => deactivateDevice(device.id)}
                       className="text-danger-fg hover:text-danger-fg text-sm"
                     >
-                      {t("devices.revoke")}
+                      "Revoke"
                     </button>
                   )}
                 </div>

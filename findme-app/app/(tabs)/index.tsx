@@ -5,9 +5,11 @@ import {
 import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { usePolling } from "../../lib/use-polling";
+import { useSSE } from "../../lib/use-sse";
 import { getStoredValue, setStoredValue } from "../../lib/storage";
 import { getAvatarColor, getInitials } from "../../lib/avatar";
 import { MAP_TILE_LAYERS, TILE_LAYER_IDS, TILE_BG_COLORS } from "../../lib/map-tiles";
@@ -49,6 +51,7 @@ function buildMapHtml(
     isPrimary: boolean;
     avatar?: string | null;
     battery?: number | null;
+    accuracy?: number | null;
     lastSeen: string;
     deviceCount?: number;
   }> = [];
@@ -69,6 +72,7 @@ function buildMapHtml(
       isPrimary: d.isPrimary,
       avatar: d.isPrimary ? ownerAvatar : null,
       battery: d.latestLocation.batteryLevel,
+      accuracy: d.latestLocation.accuracy ?? null,
       lastSeen: online ? "Online" : formatLastSeen(d.lastSeen),
     });
   });
@@ -94,6 +98,7 @@ function buildMapHtml(
       isPrimary: false,
       avatar: p.user.avatar,
       battery: loc.batteryLevel,
+      accuracy: loc.accuracy ?? null,
       lastSeen: online ? "Online" : formatLastSeen(mostRecent.lastSeen),
       deviceCount: devicesWithLoc.length,
     });
@@ -155,6 +160,7 @@ window.setTileLayer = function(url, maxZoom) {
 
 var markers = ${markersJson};
 var bounds = [];
+var markerMap = {};
 
 markers.forEach(function(m) {
   var borderColor = m.online ? '#22c55e' : '#6b7280';
@@ -186,6 +192,7 @@ markers.forEach(function(m) {
 
   var detailParts = [];
   if (m.battery != null) detailParts.push('Battery: '+m.battery+'%');
+  if (m.accuracy) detailParts.push('Accuracy: '+m.accuracy+'m');
   if (m.deviceCount) detailParts.push(m.deviceCount+' device'+(m.deviceCount!==1?'s':''));
 
   var gmapsUrl = 'https://www.google.com/maps/dir/?api=1&destination='+m.lat+','+m.lng;
@@ -203,9 +210,14 @@ markers.forEach(function(m) {
     + '</a>'
     + '</div>';
 
-  L.marker([m.lat, m.lng], { icon: icon })
+  var markerObj = L.marker([m.lat, m.lng], { icon: icon })
     .bindPopup(popupHtml, { maxWidth: 250, closeButton: false })
     .addTo(map);
+  markerMap[m.lat + ',' + m.lng] = markerObj;
+
+  if (m.accuracy && m.accuracy > 0) {
+    L.circle([m.lat, m.lng], { radius: m.accuracy, color: borderColor, weight: 1, opacity: 0.4, fillColor: borderColor, fillOpacity: 0.08, dashArray: '4,4' }).addTo(map);
+  }
 
   bounds.push([m.lat, m.lng]);
 });
@@ -213,6 +225,12 @@ markers.forEach(function(m) {
 if (bounds.length > 0) {
   map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
 }
+
+window.updateMarker = function(data) {
+  // data: { lat, lng, deviceId, accuracy, batteryLevel, timestamp }
+  // Trigger a full refresh via RN
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'location_update', data: data }));
+};
 <\/script>
 </body>
 </html>`;
@@ -222,6 +240,7 @@ export default function MapScreen() {
   const { apiClient, serverUrl, isLoading: authLoading } = useAuth();
   const { colors, effectiveMode } = useTheme();
   const { focusLat, focusLng } = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
+  const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
   const webViewRef = useRef<WebView>(null);
   const [tileLayerId, setTileLayerId] = useState<MapTileLayerId>(effectiveMode === "dark" ? "dark" : "light");
@@ -280,8 +299,20 @@ export default function MapScreen() {
     [apiClient]
   );
 
-  const { data: devices } = usePolling<DeviceWithLocation[]>(fetchDevices, 30000);
-  const { data: people } = usePolling<PersonWithDevices[]>(fetchPeople, 30000);
+  const { data: devices, refetch: refetchDevices } = usePolling<DeviceWithLocation[]>(fetchDevices, 30000);
+  const { data: people, refetch: refetchPeople } = usePolling<PersonWithDevices[]>(fetchPeople, 30000);
+
+  const handleSSELocationUpdate = useCallback(() => {
+    refetchDevices();
+    refetchPeople();
+  }, [refetchDevices, refetchPeople]);
+
+  const { connected: sseConnected } = useSSE({
+    url: serverUrl || "",
+    token: apiClient.getAccessToken(),
+    enabled: !!serverUrl && !authLoading,
+    onLocationUpdate: handleSSELocationUpdate,
+  });
 
   const bgColor = TILE_BG_COLORS[tileLayerId];
 
@@ -318,6 +349,12 @@ export default function MapScreen() {
         showsVerticalScrollIndicator={false}
         setBuiltInZoomControls={false}
       />
+
+      {/* SSE Connection Indicator */}
+      <View style={[styles.sseIndicator, { top: insets.top + 12 }]}>
+        <View style={[styles.sseDot, { backgroundColor: sseConnected ? "#22c55e" : "#9ca3af" }]} />
+        <Text style={styles.sseText}>{sseConnected ? "Live" : ""}</Text>
+      </View>
 
       {/* Tile Layer Button */}
       <TouchableOpacity
@@ -368,6 +405,28 @@ function createStyles(colors: ThemeColors) {
     loadingContainer: { alignItems: "center", justifyContent: "center" },
     loadingText: { marginTop: 12, fontSize: 14 },
     map: { flex: 1 },
+    sseIndicator: {
+      position: "absolute",
+      right: 16,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(0,0,0,0.55)",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+      zIndex: 10,
+    },
+    sseDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    sseText: {
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: "600",
+      marginLeft: 4,
+    },
     layerButton: {
       position: "absolute",
       bottom: 24,

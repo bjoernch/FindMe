@@ -1,0 +1,81 @@
+version: 2
+updates:
+  # Web app (Next.js)
+  - package-ecosystem: "npm"
+    directory: "/findme"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "web"
+    groups:
+      # Group minor/patch updates to reduce PR noise
+      production-deps:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@types/*"
+          - "eslint*"
+          - "typescript"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-deps:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "typescript"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Mobile app (Expo/React Native)
+  - package-ecosystem: "npm"
+    directory: "/findme-app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "mobile"
+    groups:
+      expo-deps:
+        patterns:
+          - "expo*"
+        update-types:
+          - "minor"
+          - "patch"
+      react-native-deps:
+        patterns:
+          - "react-native*"
+        update-types:
+          - "minor"
+          - "patch"
+      other-deps:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "expo*"
+          - "react-native*"
+          - "@types/*"
+          - "typescript"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"

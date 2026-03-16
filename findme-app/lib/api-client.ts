@@ -6,6 +6,7 @@ import type {
   LoginRequest,
   DevicePublic,
   DeviceRegisterRequest,
+  DeviceUpdateRequest,
   DeviceWithLocation,
   LocationData,
   LocationUpdateRequest,
@@ -226,6 +227,37 @@ export class FindMeClient {
 
   async listDevices(): Promise<ApiResponse<DevicePublic[]>> {
     return this.request<DevicePublic[]>("/api/devices");
+  }
+
+  async updateDevice(
+    id: string,
+    data: DeviceUpdateRequest
+  ): Promise<ApiResponse<DevicePublic>> {
+    return this.request<DevicePublic>(`/api/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteDevice(id: string): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>(`/api/devices/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  getAccessToken(): string | null {
+    return this.accessToken;
+  }
+
+  // ── Settings ──────────────────────────────────────────────────
+
+  async updateSettings(
+    data: { name?: string }
+  ): Promise<ApiResponse<UserPublic>> {
+    return this.request<UserPublic>("/api/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   }
 
   // ── Location ────────────────────────────────────────────────

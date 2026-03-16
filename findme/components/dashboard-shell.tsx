@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { signOut } from "next-auth/react";
 import { useTheme } from "./theme-provider";
-import { useI18n } from "@/lib/i18n/context";
 
 interface DashboardShellProps {
   user: { name: string; email: string; role: string; avatar?: string | null };
@@ -33,32 +32,26 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-const navItemDefs = [
-  { href: "/dashboard", i18nKey: "nav.map", icon: "🗺" },
-  { href: "/dashboard/people", i18nKey: "nav.people", icon: "👥" },
-  { href: "/dashboard/devices", i18nKey: "nav.devices", icon: "📱" },
-  { href: "/dashboard/geofences", i18nKey: "nav.geofences", icon: "📍" },
-  { href: "/dashboard/share", i18nKey: "nav.share", icon: "🔗" },
-  { href: "/dashboard/settings", i18nKey: "nav.settings", icon: "⚙" },
+const navItems = [
+  { href: "/dashboard", label: "Map", icon: "\uD83D\uDDFA" },
+  { href: "/dashboard/people", label: "People", icon: "\uD83D\uDC65" },
+  { href: "/dashboard/devices", label: "Devices", icon: "\uD83D\uDCF1" },
+  { href: "/dashboard/geofences", label: "Geofences", icon: "\uD83D\uDCCD" },
+  { href: "/dashboard/share", label: "Share", icon: "\uD83D\uDD17" },
+  { href: "/dashboard/settings", label: "Settings", icon: "\u2699" },
 ];
 
 export function DashboardShell({ user, children }: DashboardShellProps) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { theme, setTheme, isDark } = useTheme();
-  const { t } = useI18n();
-
-  const navItems = navItemDefs.map((item) => ({
-    ...item,
-    label: t(item.i18nKey),
-  }));
 
   function cycleTheme() {
     const next = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
     setTheme(next);
   }
 
-  const themeIcon = theme === "system" ? "◐" : theme === "dark" ? "🌙" : "☀️";
+  const themeIcon = theme === "system" ? "\u25D0" : theme === "dark" ? "\uD83C\uDF19" : "\u2600\uFE0F";
   const themeLabel = theme === "system" ? "Auto" : theme === "dark" ? "Dark" : "Light";
 
   return (
@@ -102,7 +95,7 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
                     : "text-sub hover:text-heading hover:bg-input"
                 }`}
               >
-                {t("nav.admin")}
+                Admin
               </Link>
             )}
           </nav>
@@ -138,7 +131,7 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
             onClick={() => signOut({ callbackUrl: "/auth" })}
             className="text-sm text-sub hover:text-heading bg-input px-3 py-1.5 rounded-lg transition-colors"
           >
-            {t("nav.signOut")}
+            Sign out
           </button>
         </div>
       </header>

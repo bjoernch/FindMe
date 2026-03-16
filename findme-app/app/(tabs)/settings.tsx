@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Switch, Alert, ActivityIndicator,
 } from "react-native";
@@ -12,6 +12,22 @@ import { startBackgroundTracking, stopBackgroundTracking, isTrackingActive, show
 import { AvatarCircle } from "../../components/AvatarCircle";
 import { AvatarCropModal } from "../../components/AvatarCropModal";
 import type { ThemeColors } from "../../lib/theme";
+import type { DevicePublic } from "../../lib/types";
+
+function formatLastSeen(lastSeen: string | null): string {
+  if (!lastSeen) return "Never";
+  const diff = Date.now() - new Date(lastSeen).getTime();
+  if (diff < 60_000) return "Just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function platformIcon(platform: string): "phone-portrait" | "phone-landscape-outline" | "desktop-outline" {
+  if (platform === "ios") return "phone-portrait";
+  if (platform === "android") return "phone-landscape-outline";
+  return "desktop-outline";
+}
 
 export default function SettingsScreen() {
   const { user, logout, serverUrl, setServerUrl, apiClient, updateUser } = useAuth();
@@ -24,10 +40,42 @@ export default function SettingsScreen() {
   const [cropImage, setCropImage] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
+  // Profile name editing
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(user?.name || "");
+
+  // Device management
+  const [devices, setDevices] = useState<DevicePublic[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [deviceNameInput, setDeviceNameInput] = useState("");
+
+  const loadDevices = useCallback(async () => {
+    setDevicesLoading(true);
+    try {
+      const res = await apiClient.listDevices();
+      if (res.success && res.data) {
+        setDevices(res.data);
+      }
+    } catch {
+      // silent
+    } finally {
+      setDevicesLoading(false);
+    }
+  }, [apiClient]);
+
   useEffect(() => {
     isTrackingActive().then(setTrackingEnabled);
     getStoredValue("deviceId").then(setDeviceId);
-  }, []);
+    loadDevices();
+  }, [loadDevices]);
+
+  // Sync nameInput when user changes
+  useEffect(() => {
+    if (!editingName) {
+      setNameInput(user?.name || "");
+    }
+  }, [user?.name, editingName]);
 
   async function pickAvatar() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -78,6 +126,22 @@ export default function SettingsScreen() {
     ]);
   }
 
+  async function handleSaveName() {
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    try {
+      const res = await apiClient.updateSettings({ name: trimmed });
+      if (res.success) {
+        updateUser({ name: trimmed });
+        setEditingName(false);
+      } else {
+        Alert.alert("Error", res.error || "Could not update name");
+      }
+    } catch {
+      Alert.alert("Error", "Failed to update name");
+    }
+  }
+
   async function handleTrackingToggle(value: boolean) {
     setTrackingEnabled(value);
     if (value) {
@@ -93,6 +157,67 @@ export default function SettingsScreen() {
 
   async function handleSaveServer() {
     if (serverInput.trim()) { await setServerUrl(serverInput.trim()); setEditingServer(false); }
+  }
+
+  // Device actions
+  async function handleRenameDevice(id: string) {
+    const trimmed = deviceNameInput.trim();
+    if (!trimmed) return;
+    try {
+      const res = await apiClient.updateDevice(id, { name: trimmed });
+      if (res.success) {
+        setEditingDeviceId(null);
+        setDeviceNameInput("");
+        await loadDevices();
+      } else {
+        Alert.alert("Error", res.error || "Could not rename device");
+      }
+    } catch {
+      Alert.alert("Error", "Failed to rename device");
+    }
+  }
+
+  async function handleSetPrimary(id: string) {
+    try {
+      const res = await apiClient.updateDevice(id, { isPrimary: true });
+      if (res.success) {
+        await loadDevices();
+      } else {
+        Alert.alert("Error", res.error || "Could not set primary device");
+      }
+    } catch {
+      Alert.alert("Error", "Failed to set primary device");
+    }
+  }
+
+  function handleDeleteDevice(device: DevicePublic) {
+    if (device.id === deviceId) {
+      Alert.alert("Cannot Delete", "You cannot delete the device you are currently using.");
+      return;
+    }
+    Alert.alert(
+      "Delete Device",
+      `Remove "${device.name}" from your account? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await apiClient.deleteDevice(device.id);
+              if (res.success) {
+                await loadDevices();
+              } else {
+                Alert.alert("Error", res.error || "Could not delete device");
+              }
+            } catch {
+              Alert.alert("Error", "Failed to delete device");
+            }
+          },
+        },
+      ]
+    );
   }
 
   function handleLogout() {
@@ -126,7 +251,33 @@ export default function SettingsScreen() {
                 </View>
               </TouchableOpacity>
               <View style={styles.accountInfo}>
-                <Text style={styles.accountName}>{user?.name || "User"}</Text>
+                {editingName ? (
+                  <View style={styles.nameEditRow}>
+                    <TextInput
+                      style={styles.nameInput}
+                      value={nameInput}
+                      onChangeText={setNameInput}
+                      autoFocus
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      placeholder="Your name"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                    <View style={styles.nameButtons}>
+                      <TouchableOpacity onPress={() => { setEditingName(false); setNameInput(user?.name || ""); }} style={styles.nameCancelBtn}>
+                        <Text style={styles.nameCancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={handleSaveName} style={styles.nameSaveBtn}>
+                        <Text style={styles.nameSaveText}>Save</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={() => setEditingName(true)} style={styles.nameRow}>
+                    <Text style={styles.accountName}>{user?.name || "User"}</Text>
+                    <Ionicons name="pencil" size={14} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
+                )}
                 <Text style={styles.accountEmail}>{user?.email || ""}</Text>
                 <Text style={styles.accountRole}>{user?.role === "ADMIN" ? "Administrator" : "Member"}</Text>
                 {user?.avatar && (
@@ -139,15 +290,91 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Device */}
+        {/* Devices */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>THIS DEVICE</Text>
-          <View style={styles.card}>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Device ID</Text>
-              <Text style={styles.settingValue}>{deviceId ? `${deviceId.substring(0, 8)}...` : "Not registered"}</Text>
+          <Text style={styles.sectionTitle}>DEVICES</Text>
+          {devicesLoading && devices.length === 0 ? (
+            <View style={styles.card}>
+              <ActivityIndicator size="small" color={colors.accent} />
             </View>
-          </View>
+          ) : devices.length === 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.settingHint}>No devices registered</Text>
+            </View>
+          ) : (
+            devices.map((device) => {
+              const isCurrentDevice = device.id === deviceId;
+              const isEditingThis = editingDeviceId === device.id;
+              return (
+                <View key={device.id} style={[styles.deviceCard, isCurrentDevice && styles.deviceCardCurrent]}>
+                  <View style={styles.deviceHeader}>
+                    <Ionicons name={platformIcon(device.platform)} size={20} color={colors.textSecondary} />
+                    <View style={styles.deviceInfo}>
+                      {isEditingThis ? (
+                        <View style={styles.deviceNameEditRow}>
+                          <TextInput
+                            style={styles.deviceNameInput}
+                            value={deviceNameInput}
+                            onChangeText={setDeviceNameInput}
+                            autoFocus
+                            autoCapitalize="words"
+                            autoCorrect={false}
+                            placeholder="Device name"
+                            placeholderTextColor={colors.textMuted}
+                          />
+                          <View style={styles.nameButtons}>
+                            <TouchableOpacity onPress={() => { setEditingDeviceId(null); setDeviceNameInput(""); }} style={styles.nameCancelBtn}>
+                              <Text style={styles.nameCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleRenameDevice(device.id)} style={styles.nameSaveBtn}>
+                              <Text style={styles.nameSaveText}>Save</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => { setEditingDeviceId(device.id); setDeviceNameInput(device.name); }}
+                          style={styles.deviceNameRow}
+                        >
+                          <Text style={styles.deviceName}>{device.name}</Text>
+                          <Ionicons name="pencil" size={12} color={colors.textMuted} style={{ marginLeft: 4 }} />
+                        </TouchableOpacity>
+                      )}
+                      <View style={styles.deviceBadges}>
+                        {isCurrentDevice && (
+                          <View style={[styles.badge, { backgroundColor: colors.accent }]}>
+                            <Text style={styles.badgeText}>This device</Text>
+                          </View>
+                        )}
+                        {device.isPrimary && (
+                          <View style={[styles.badge, { backgroundColor: colors.success }]}>
+                            <Text style={styles.badgeText}>Primary</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.deviceMeta}>Last seen: {formatLastSeen(device.lastSeen)}</Text>
+                    </View>
+                  </View>
+                  {!isEditingThis && (
+                    <View style={styles.deviceActions}>
+                      {!device.isPrimary && (
+                        <TouchableOpacity onPress={() => handleSetPrimary(device.id)} style={styles.deviceActionBtn}>
+                          <Ionicons name="star-outline" size={16} color={colors.accent} />
+                          <Text style={[styles.deviceActionText, { color: colors.accent }]}>Set primary</Text>
+                        </TouchableOpacity>
+                      )}
+                      {!isCurrentDevice && (
+                        <TouchableOpacity onPress={() => handleDeleteDevice(device)} style={styles.deviceActionBtn}>
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                          <Text style={[styles.deviceActionText, { color: colors.error }]}>Remove</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
         </View>
 
         {/* Appearance */}
@@ -254,9 +481,34 @@ function createStyles(colors: ThemeColors) {
     avatarBadge: { position: "absolute", bottom: 0, right: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.surface },
     removeAvatar: { fontSize: 12, color: colors.error, marginTop: 4 },
     accountInfo: { marginLeft: 14, flex: 1 },
+    nameRow: { flexDirection: "row", alignItems: "center" },
     accountName: { fontSize: 18, fontWeight: "700", color: colors.textPrimary },
     accountEmail: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
     accountRole: { fontSize: 12, color: colors.accent, fontWeight: "600", marginTop: 4 },
+    nameEditRow: { gap: 8 },
+    nameInput: { backgroundColor: colors.surfaceLight, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 16, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
+    nameButtons: { flexDirection: "row", gap: 8, justifyContent: "flex-end" },
+    nameCancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+    nameCancelText: { color: colors.textSecondary, fontWeight: "600", fontSize: 13 },
+    nameSaveBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: colors.accent },
+    nameSaveText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+    // Device styles
+    deviceCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 16, marginBottom: 8 },
+    deviceCardCurrent: { borderWidth: 1, borderColor: colors.accent + "40" },
+    deviceHeader: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+    deviceInfo: { flex: 1 },
+    deviceNameRow: { flexDirection: "row", alignItems: "center" },
+    deviceName: { fontSize: 16, fontWeight: "600", color: colors.textPrimary },
+    deviceNameEditRow: { gap: 8 },
+    deviceNameInput: { backgroundColor: colors.surfaceLight, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
+    deviceBadges: { flexDirection: "row", gap: 6, marginTop: 4 },
+    badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+    badgeText: { fontSize: 11, fontWeight: "700", color: "#fff" },
+    deviceMeta: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
+    deviceActions: { flexDirection: "row", gap: 16, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.surfaceLight },
+    deviceActionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+    deviceActionText: { fontSize: 13, fontWeight: "600" },
+    // Existing styles
     settingRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     settingLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
     settingLabel: { fontSize: 16, color: colors.textPrimary },

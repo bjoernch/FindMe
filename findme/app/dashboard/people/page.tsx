@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { AvatarCircle } from "@/components/avatar-circle";
 import { InviteDialog } from "@/components/invite-dialog";
-import { useI18n } from "@/lib/i18n/context";
+
 import type {
   PersonWithDevices,
   PeopleSharePublic,
@@ -34,7 +34,7 @@ function isOnline(lastSeen: string | null): boolean {
 }
 
 export default function PeoplePage() {
-  const { t } = useI18n();
+
   const [people, setPeople] = useState<PersonWithDevices[]>([]);
   const [pendingReceived, setPendingReceived] = useState<PeopleSharePublic[]>(
     []
@@ -137,12 +137,12 @@ export default function PeoplePage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-heading">{t("people.title")}</h1>
+        <h1 className="text-2xl font-bold text-heading">"People"</h1>
         <button
           onClick={() => setShowInvite(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
         >
-          + {t("people.invite")}
+          + "Invite"
         </button>
       </div>
 
