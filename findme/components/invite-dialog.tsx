@@ -75,7 +75,7 @@ export function InviteDialog({ onClose, onInvited }: InviteDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4">
       <div className="bg-card border border-edge rounded-xl w-full max-w-md">
         <div className="p-4 border-b border-edge flex items-center justify-between">
           <h2 className="text-lg font-semibold text-heading">

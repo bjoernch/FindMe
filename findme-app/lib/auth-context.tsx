@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { Platform } from "react-native";
 import * as Device from "expo-device";
 import { FindMeClient } from "./api-client";
 import {
@@ -94,10 +95,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const deviceName =
-      Device.modelName || Device.deviceName || "Android Device";
+      Device.deviceName || Device.modelName || "Unknown Device";
+    const platform = Platform.OS === "ios" ? "ios" : "android";
     const result = await apiClient.registerDevice({
       name: deviceName,
-      platform: "android",
+      platform,
     });
 
     if (result.success && result.data) {
@@ -162,12 +164,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionToken: string
   ): Promise<string | null> {
     const deviceName =
-      Device.modelName || Device.deviceName || "Android Device";
+      Device.deviceName || Device.modelName || "Unknown Device";
+    const platform = Platform.OS === "ios" ? "ios" : "android";
     const result = await apiClient.qrAuth(
       qrServerUrl,
       sessionToken,
       deviceName,
-      "android"
+      platform
     );
 
     if (result.success && result.data) {

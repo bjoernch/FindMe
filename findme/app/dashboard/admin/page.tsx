@@ -35,9 +35,22 @@ export default function AdminPage() {
   const [devices, setDevices] = useState<AdminDeviceView[]>([]);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"users" | "devices" | "system">("users");
+  const [tab, setTab] = useState<"users" | "devices" | "system" | "smtp">("users");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+
+  // SMTP state
+  const [smtp, setSmtp] = useState({
+    smtp_host: "",
+    smtp_port: "587",
+    smtp_user: "",
+    smtp_pass: "",
+    smtp_from: "",
+    smtp_secure: "false",
+  });
+  const [smtpEnvConfigured, setSmtpEnvConfigured] = useState(false);
+  const [smtpSaving, setSmtpSaving] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState(false);
 
   const currentUserId = (session?.user as { id?: string } | undefined)?.id;
 
@@ -53,17 +66,23 @@ export default function AdminPage() {
 
   async function loadData() {
     try {
-      const [uRes, dRes, sRes] = await Promise.all([
+      const [uRes, dRes, sRes, smtpRes] = await Promise.all([
         fetch("/api/admin/users"),
         fetch("/api/admin/devices"),
         fetch("/api/admin/system"),
+        fetch("/api/admin/smtp"),
       ]);
       const uData: ApiResponse<AdminUserView[]> = await uRes.json();
       const dData: ApiResponse<AdminDeviceView[]> = await dRes.json();
       const sData: ApiResponse<SystemInfo> = await sRes.json();
+      const smtpData = await smtpRes.json();
       if (uData.success && uData.data) setUsers(uData.data);
       if (dData.success && dData.data) setDevices(dData.data);
       if (sData.success && sData.data) setSystemInfo(sData.data);
+      if (smtpData.success && smtpData.data) {
+        setSmtp((prev) => ({ ...prev, ...smtpData.data.settings }));
+        setSmtpEnvConfigured(smtpData.data.envConfigured);
+      }
     } catch {
       // silent
     } finally {
@@ -226,6 +245,16 @@ export default function AdminPage() {
           }`}
         >
           System
+        </button>
+        <button
+          onClick={() => setTab("smtp")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            tab === "smtp"
+              ? "bg-card text-heading shadow-sm"
+              : "text-sub hover:text-heading"
+          }`}
+        >
+          Email
         </button>
       </div>
 
@@ -534,7 +563,7 @@ export default function AdminPage() {
             <h3 className="text-base font-semibold text-heading mb-4">Links</h3>
             <div className="flex flex-wrap gap-3">
               <a
-                href="https://github.com"
+                href="https://github.com/bjoernch/FindMe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-input hover:bg-edge px-4 py-2 rounded-lg text-sm text-sub hover:text-heading transition-colors"
@@ -563,6 +592,138 @@ export default function AdminPage() {
       {tab === "system" && !systemInfo && (
         <div className="bg-card border border-edge rounded-xl p-8 text-center">
           <p className="text-hint">Failed to load system information.</p>
+        </div>
+      )}
+
+      {/* SMTP Settings */}
+      {tab === "smtp" && (
+        <div className="space-y-6">
+          <div className="bg-card border border-edge rounded-xl p-6">
+            <h3 className="text-base font-semibold text-heading mb-2">Email (SMTP) Settings</h3>
+            <p className="text-sm text-sub mb-4">
+              Configure SMTP to enable email notifications for invitations and geofence alerts.
+              {smtpEnvConfigured && (
+                <span className="block mt-1 text-xs text-hint">
+                  Note: SMTP is also configured via environment variables. Dashboard settings take priority.
+                </span>
+              )}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-sub mb-1">SMTP Host</label>
+                <input
+                  type="text"
+                  value={smtp.smtp_host}
+                  onChange={(e) => setSmtp({ ...smtp, smtp_host: e.target.value })}
+                  placeholder="smtp.gmail.com"
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">SMTP Port</label>
+                <input
+                  type="text"
+                  value={smtp.smtp_port}
+                  onChange={(e) => setSmtp({ ...smtp, smtp_port: e.target.value })}
+                  placeholder="587"
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">Username</label>
+                <input
+                  type="text"
+                  value={smtp.smtp_user}
+                  onChange={(e) => setSmtp({ ...smtp, smtp_user: e.target.value })}
+                  placeholder="your@email.com"
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">Password</label>
+                <input
+                  type="password"
+                  value={smtp.smtp_pass}
+                  onChange={(e) => setSmtp({ ...smtp, smtp_pass: e.target.value })}
+                  placeholder="App password or SMTP password"
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">From Address</label>
+                <input
+                  type="text"
+                  value={smtp.smtp_from}
+                  onChange={(e) => setSmtp({ ...smtp, smtp_from: e.target.value })}
+                  placeholder="FindMe <noreply@example.com>"
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex items-center gap-3 pt-6">
+                <label className="flex items-center gap-2 text-sm text-sub cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={smtp.smtp_secure === "true"}
+                    onChange={(e) => setSmtp({ ...smtp, smtp_secure: e.target.checked ? "true" : "false" })}
+                    className="rounded"
+                  />
+                  Use SSL/TLS (port 465)
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                onClick={async () => {
+                  setSmtpSaving(true);
+                  try {
+                    const res = await fetch("/api/admin/smtp", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(smtp),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setActionMessage("SMTP settings saved.");
+                    } else {
+                      setActionMessage(`Error: ${data.error}`);
+                    }
+                  } catch {
+                    setActionMessage("Failed to save SMTP settings.");
+                  }
+                  setSmtpSaving(false);
+                  setTimeout(() => setActionMessage(null), 3000);
+                }}
+                disabled={smtpSaving}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {smtpSaving ? "Saving..." : "Save Settings"}
+              </button>
+              <button
+                onClick={async () => {
+                  setSmtpTesting(true);
+                  try {
+                    const res = await fetch("/api/admin/smtp", { method: "POST" });
+                    const data = await res.json();
+                    if (data.success) {
+                      setActionMessage("SMTP connection test successful!");
+                    } else {
+                      setActionMessage(`SMTP test failed: ${data.error}`);
+                    }
+                  } catch {
+                    setActionMessage("SMTP test failed.");
+                  }
+                  setSmtpTesting(false);
+                  setTimeout(() => setActionMessage(null), 5000);
+                }}
+                disabled={smtpTesting || !smtp.smtp_host}
+                className="bg-input hover:bg-edge disabled:opacity-50 text-heading text-sm font-medium px-4 py-2 rounded-lg border border-edge-bold transition-colors"
+              >
+                {smtpTesting ? "Testing..." : "Test Connection"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

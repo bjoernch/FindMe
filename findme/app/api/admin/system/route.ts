@@ -76,17 +76,28 @@ export async function GET() {
     const deps = packageJson.dependencies as Record<string, string> | undefined;
     const devDeps = packageJson.devDependencies as Record<string, string> | undefined;
 
+    function getInstalledVersion(name: string, fallback: string): string {
+      try {
+        const modPkgPath = join(process.cwd(), "node_modules", name, "package.json");
+        if (existsSync(modPkgPath)) {
+          const modPkg = JSON.parse(readFileSync(modPkgPath, "utf-8"));
+          return modPkg.version;
+        }
+      } catch { /* fallback */ }
+      return fallback.replace(/^\^|~/, "");
+    }
+
     const dependencies: DependencyInfo[] = Object.entries(deps || {}).map(
       ([name, version]) => ({
         name,
-        currentVersion: version.replace(/^\^|~/, ""),
+        currentVersion: getInstalledVersion(name, version),
       })
     );
 
     const devDependencies: DependencyInfo[] = Object.entries(devDeps || {}).map(
       ([name, version]) => ({
         name,
-        currentVersion: version.replace(/^\^|~/, ""),
+        currentVersion: getInstalledVersion(name, version),
       })
     );
 

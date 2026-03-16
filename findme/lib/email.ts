@@ -1,9 +1,10 @@
 /**
  * Optional email notification system using SMTP.
- * Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM in environment variables.
+ * Configuration priority: Database AppSettings > Environment variables.
  * If not configured, email functions silently no-op.
  */
 import { log } from "@/lib/logger";
+import { prisma } from "@/lib/db";
 
 interface EmailOptions {
   to: string;
@@ -12,37 +13,78 @@ interface EmailOptions {
   text?: string;
 }
 
-function isEmailConfigured(): boolean {
-  return !!(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_PORT &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
-  );
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  from: string;
+  secure: boolean;
+}
+
+export async function getSmtpConfig(): Promise<SmtpConfig | null> {
+  // Try database settings first
+  try {
+    const settings = await prisma.appSetting.findMany({
+      where: { key: { in: ["smtp_host", "smtp_port", "smtp_user", "smtp_pass", "smtp_from", "smtp_secure"] } },
+    });
+
+    const dbConfig: Record<string, string> = {};
+    for (const s of settings) {
+      dbConfig[s.key] = s.value;
+    }
+
+    if (dbConfig.smtp_host && dbConfig.smtp_user && dbConfig.smtp_pass) {
+      return {
+        host: dbConfig.smtp_host,
+        port: parseInt(dbConfig.smtp_port || "587"),
+        user: dbConfig.smtp_user,
+        pass: dbConfig.smtp_pass,
+        from: dbConfig.smtp_from || `FindMe <${dbConfig.smtp_user}>`,
+        secure: dbConfig.smtp_secure === "true",
+      };
+    }
+  } catch {
+    // DB not available, fall through to env vars
+  }
+
+  // Fall back to environment variables
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return {
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+      from: process.env.SMTP_FROM || `FindMe <${process.env.SMTP_USER}>`,
+      secure: process.env.SMTP_SECURE === "true",
+    };
+  }
+
+  return null;
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
-  if (!isEmailConfigured()) {
+  const config = await getSmtpConfig();
+  if (!config) {
     log.debug("email", "SMTP not configured, skipping", { to: options.to });
     return false;
   }
 
   try {
-    // Dynamic import to avoid requiring nodemailer when SMTP is not configured
     const nodemailer = await import("nodemailer");
 
     const transport = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true",
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: config.user,
+        pass: config.pass,
       },
     });
 
     await transport.sendMail({
-      from: process.env.SMTP_FROM || `FindMe <${process.env.SMTP_USER}>`,
+      from: config.from,
       to: options.to,
       subject: options.subject,
       html: options.html,
