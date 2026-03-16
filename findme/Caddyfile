@@ -1,0 +1,12 @@
+{
+	auto_https disable_redirects
+}
+
+:443 {
+	tls /etc/caddy/certs/selfsigned.crt /etc/caddy/certs/selfsigned.key
+	reverse_proxy findme:3000
+}
+
+:80 {
+	reverse_proxy findme:3000
+}

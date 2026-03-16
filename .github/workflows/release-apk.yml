@@ -1,0 +1,138 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+
+# Required repository secrets:
+#   RELEASE_KEYSTORE_BASE64    - base64-encoded .jks keystore (keytool -genkeypair ...)
+#   RELEASE_KEYSTORE_PASSWORD  - keystore password
+#   RELEASE_KEY_ALIAS          - key alias name
+#   RELEASE_KEY_PASSWORD       - key password
+#
+# Generate a keystore:
+#   keytool -genkeypair -v -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 \
+#     -storepass <password> -keypass <password> -alias findme -keystore findme-release.jks \
+#     -dname "CN=FindMe, OU=FindMe, O=FindMe, L=Unknown, ST=Unknown, C=US"
+#
+# Encode to base64:
+#   base64 -i findme-release.jks | pbcopy
+
+jobs:
+  build-apk:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
+          VERSION="${TAG#v}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+          VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION (code: $VERSION_CODE)"
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: findme-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: findme-app
+        run: npm ci --legacy-peer-deps
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 secret is not set. Cannot build release APK without signing keystore."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/findme-release.jks
+          echo "Keystore decoded successfully"
+
+      - name: Patch version in build.gradle
+        working-directory: findme-app/android/app
+        run: |
+          sed -i "s/versionCode .*/versionCode ${{ steps.version.outputs.version_code }}/" build.gradle
+          sed -i "s/versionName .*/versionName \"${{ steps.version.outputs.version }}\"/" build.gradle
+
+      - name: Bundle JS
+        working-directory: findme-app
+        run: npx expo export --platform android
+
+      - name: Build release APK and AAB
+        working-directory: findme-app/android
+        env:
+          RELEASE_KEYSTORE_PATH: /tmp/findme-release.jks
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Rename artifacts
+        run: |
+          mv findme-app/android/app/build/outputs/apk/release/app-release.apk \
+             FindMe-v${{ steps.version.outputs.version }}.apk
+          mv findme-app/android/app/build/outputs/bundle/release/app-release.aab \
+             FindMe-v${{ steps.version.outputs.version }}.aab
+
+      - name: Create GitHub Release with artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Generate release notes from commits since last tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes \
+              -f tag_name="$TAG" \
+              -f target_commitish="${{ github.sha }}" \
+              -f previous_tag_name="$PREV_TAG" \
+              --jq '.body')
+          else
+            NOTES="Release $TAG"
+          fi
+
+          # Create the release with APK + AAB attached
+          gh release create "$TAG" \
+            "FindMe-v${VERSION}.apk" \
+            "FindMe-v${VERSION}.aab" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+            --verify-tag
+
+      - name: Cleanup keystore
+        if: always()
+        run: rm -f /tmp/findme-release.jks

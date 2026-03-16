@@ -1,0 +1,91 @@
+name: Dependency Compatibility Check
+
+on:
+  pull_request:
+    paths:
+      - "findme/package.json"
+      - "findme/package-lock.json"
+      - "findme-app/package.json"
+      - "findme-app/package-lock.json"
+  workflow_dispatch:
+
+jobs:
+  check-web:
+    name: Web App - Build & Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: findme
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: findme/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXTAUTH_SECRET: test-secret-for-ci
+          DATABASE_URL: file:./ci-test.db
+
+  check-mobile:
+    name: Mobile App - Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: findme-app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: findme-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./findme
+          push: false
+          tags: findme:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

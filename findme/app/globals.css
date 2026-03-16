@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* ── Theme color tokens ─────────────────────────────── */
+:root {
+  --page: #f9fafb;
+  --card: #ffffff;
+  --input: #f3f4f6;
+  --hover: #e5e7eb;
+  --edge: #e5e7eb;
+  --edge-bold: #d1d5db;
+  --heading: #111827;
+  --sub: #4b5563;
+  --hint: #6b7280;
+  --dim: #9ca3af;
+  --link: #2563eb;
+  --link-hover: #1d4ed8;
+  --success-fg: #16a34a;
+  --danger-fg: #dc2626;
+  --warn-fg: #ca8a04;
+  --success-bg: #f0fdf4;
+  --danger-bg: #fef2f2;
+  --warn-bg: #fefce8;
+  --active-bg: #eff6ff;
+  --success-edge: #bbf7d0;
+  --danger-edge: #fecaca;
+  --active-edge: #93c5fd;
+  --map-bg: #e5e7eb;
+}
+
+.dark {
+  --page: #030712;
+  --card: #111827;
+  --input: #1f2937;
+  --hover: #374151;
+  --edge: #1f2937;
+  --edge-bold: #374151;
+  --heading: #ffffff;
+  --sub: #9ca3af;
+  --hint: #6b7280;
+  --dim: #4b5563;
+  --link: #60a5fa;
+  --link-hover: #93c5fd;
+  --success-fg: #4ade80;
+  --danger-fg: #f87171;
+  --warn-fg: #facc15;
+  --success-bg: rgba(5, 46, 22, 0.3);
+  --danger-bg: rgba(69, 10, 10, 0.3);
+  --warn-bg: rgba(133, 77, 14, 0.2);
+  --active-bg: rgba(30, 64, 175, 0.2);
+  --success-edge: #166534;
+  --danger-edge: #991b1b;
+  --active-edge: #3b82f6;
+  --map-bg: #0e1626;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-input: var(--input);
+  --color-hover: var(--hover);
+  --color-edge: var(--edge);
+  --color-edge-bold: var(--edge-bold);
+  --color-heading: var(--heading);
+  --color-sub: var(--sub);
+  --color-hint: var(--hint);
+  --color-dim: var(--dim);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-success-fg: var(--success-fg);
+  --color-danger-fg: var(--danger-fg);
+  --color-warn-fg: var(--warn-fg);
+  --color-success-bg: var(--success-bg);
+  --color-danger-bg: var(--danger-bg);
+  --color-warn-bg: var(--warn-bg);
+  --color-active-bg: var(--active-bg);
+  --color-success-edge: var(--success-edge);
+  --color-danger-edge: var(--danger-edge);
+  --color-active-edge: var(--active-edge);
+  --color-map-bg: var(--map-bg);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--page);
+  color: var(--heading);
+  font-family: Arial, Helvetica, sans-serif;
+}

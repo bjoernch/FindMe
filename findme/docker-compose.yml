@@ -1,0 +1,81 @@
+services:
+  findme:
+    # Option 1: Build locally (for development)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    # Option 2: Use pre-built image from GitHub Container Registry
+    image: ghcr.io/bjoernch/findme:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:/app/data/findme.db
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-changeme-in-production}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      # FINDME_PUBLIC_URL is used in QR codes for mobile pairing
+      - FINDME_PUBLIC_URL=${FINDME_PUBLIC_URL:-http://localhost:3000}
+      - JWT_SECRET=${JWT_SECRET:-changeme-in-production}
+      # Optional: SMTP for email notifications
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+    volumes:
+      - findme-data:/app/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "findme"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/auth/providers"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Optional: Built-in Caddy reverse proxy ──────────────────────────
+  # Uncomment if you don't have an existing reverse proxy (e.g. Nginx Proxy Manager, Traefik).
+  # If you use an external proxy, just point it to http://<host>:3000 and leave this commented out.
+  #
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - ./certs:/etc/caddy/certs:ro
+  #     - caddy-data:/data
+  #   depends_on:
+  #     - findme
+  #   restart: unless-stopped
+
+  # ── Optional: PostgreSQL for production ─────────────────────────────
+  # 1. Uncomment the postgres service below
+  # 2. Change DATABASE_URL above to: postgresql://findme:findme@postgres:5432/findme
+  # 3. Add "depends_on: [postgres]" to the findme service
+  #
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_DB: findme
+  #     POSTGRES_USER: findme
+  #     POSTGRES_PASSWORD: findme
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U findme"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  findme-data:
+  # caddy-data:
+  # postgres-data:
