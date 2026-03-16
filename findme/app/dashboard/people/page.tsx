@@ -137,12 +137,12 @@ export default function PeoplePage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-heading">"People"</h1>
+        <h1 className="text-2xl font-bold text-heading">People</h1>
         <button
           onClick={() => setShowInvite(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
         >
-          + "Invite"
+          + Invite
         </button>
       </div>
 

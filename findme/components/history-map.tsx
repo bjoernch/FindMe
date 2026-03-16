@@ -48,7 +48,7 @@ interface HistoryMapProps {
 export function HistoryMap({
   locations,
   selectedPoint,
-  onSelectPoint,
+  onSelectPoint: _onSelectPoint,
 }: HistoryMapProps) {
   const { isDark } = useTheme();
 

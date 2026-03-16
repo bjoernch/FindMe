@@ -81,7 +81,7 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   // Test SMTP by sending an actual test email
   const session = await auth();
   if (!session?.user) {

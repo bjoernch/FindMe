@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   MapContainer,
-  TileLayer,
   Marker,
   Popup,
   Circle,
@@ -251,6 +250,8 @@ export function LocationMap({
 
   // Auto-switch with theme if user hasn't explicitly chosen
   useEffect(() => {
+    // Syncing tile selection with external theme preference
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!userChose) setTileId(isDark ? "dark" : "light");
   }, [isDark, userChose]);
 

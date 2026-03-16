@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -20,11 +20,9 @@ function AuthForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
-  const [supportsPasskey, setSupportsPasskey] = useState(false);
-
-  useEffect(() => {
-    setSupportsPasskey(browserSupportsWebAuthn());
-  }, []);
+  const [supportsPasskey] = useState(() =>
+    typeof window !== "undefined" ? browserSupportsWebAuthn() : false
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -119,7 +119,7 @@ export default function DevicesPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-heading">"Devices"</h1>
+        <h1 className="text-2xl font-bold text-heading">Devices</h1>
         <button
           onClick={() => {
             setShowRegister(!showRegister);
@@ -198,7 +198,7 @@ export default function DevicesPage() {
         <TableSkeleton />
       ) : devices.length === 0 ? (
         <div className="bg-card border border-edge rounded-xl p-12 text-center">
-          <p className="text-sub text-lg mb-2">"No devices registered"</p>
+          <p className="text-sub text-lg mb-2">No devices registered</p>
           <p className="text-hint text-sm">
             Register a device to start tracking locations.
           </p>
@@ -265,14 +265,14 @@ export default function DevicesPage() {
                     href={`/dashboard/devices/${device.id}/history`}
                     className="text-link hover:text-link-hover text-sm"
                   >
-                    "History"
+                    History
                   </Link>
                   {device.isActive && !device.isPrimary && (
                     <button
                       onClick={() => setPrimaryDevice(device.id)}
                       className="text-warn-fg hover:text-warn-fg text-sm"
                     >
-                      "Set Primary"
+                      Set Primary
                     </button>
                   )}
                   <button
@@ -282,14 +282,14 @@ export default function DevicesPage() {
                     }}
                     className="text-sub hover:text-heading text-sm"
                   >
-                    "Rename"
+                    Rename
                   </button>
                   {device.isActive && (
                     <button
                       onClick={() => deactivateDevice(device.id)}
                       className="text-danger-fg hover:text-danger-fg text-sm"
                     >
-                      "Revoke"
+                      Revoke
                     </button>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "./auth";
-import { verifyJwt, type JwtPayload } from "./jwt";
+import { verifyJwt } from "./jwt";
 import { prisma } from "./db";
 import { apiError } from "./api-response";
 

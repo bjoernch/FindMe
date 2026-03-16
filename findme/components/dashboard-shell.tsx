@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -44,7 +45,7 @@ const navItems = [
 export function DashboardShell({ user, children }: DashboardShellProps) {
   const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { theme, setTheme, isDark } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   function cycleTheme() {
     const next = theme === "system" ? "light" : theme === "light" ? "dark" : "system";
@@ -110,9 +111,11 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
           </button>
           <div className="flex items-center gap-2">
             {user.avatar ? (
-              <img
+              <Image
                 src={user.avatar}
                 alt={user.name}
+                width={28}
+                height={28}
                 className="w-7 h-7 rounded-full object-cover"
               />
             ) : (

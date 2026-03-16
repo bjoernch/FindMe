@@ -33,16 +33,12 @@ function isShareTokenPath(pathname: string): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const start = Date.now();
 
   // Log API requests (skip static assets and internal Next.js routes)
   if (pathname.startsWith("/api/")) {
-    const method = request.method;
-    const response = NextResponse.next();
-    // Log in a structured format visible in docker logs / Portainer
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "direct";
     console.log(
-      `${new Date().toISOString()} INF [http] ${method} ${pathname} ip=${ip}`
+      `${new Date().toISOString()} INF [http] ${request.method} ${pathname} ip=${ip}`
     );
   }
 

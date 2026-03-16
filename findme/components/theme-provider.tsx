@@ -26,7 +26,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem("findme-theme") as Theme | null;
-    if (stored && ["light", "dark", "system"].includes(stored)) {
+    if (stored && (["light", "dark", "system"] as string[]).includes(stored)) {
+      // Reading from localStorage is a sync-with-external-system pattern
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setThemeState(stored);
     }
   }, []);
