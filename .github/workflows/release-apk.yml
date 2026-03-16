@@ -1,8 +1,9 @@
 name: Build & Release APK
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -37,7 +38,7 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
           VERSION="${TAG#v}"
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
@@ -46,6 +47,7 @@ jobs:
           PATCH=${PATCH:-0}
           VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
 
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION (code: $VERSION_CODE)"
@@ -102,14 +104,30 @@ jobs:
           mv findme-app/android/app/build/outputs/apk/release/app-release.apk \
              FindMe-v${{ steps.version.outputs.version }}.apk
 
-      - name: Upload APK to release
+      - name: Create GitHub Release with APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
-          gh release upload "$TAG" \
+          TAG="${{ steps.version.outputs.tag }}"
+
+          # Generate release notes from commits since last tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes \
+              -f tag_name="$TAG" \
+              -f target_commitish="${{ github.sha }}" \
+              -f previous_tag_name="$PREV_TAG" \
+              --jq '.body')
+          else
+            NOTES="Release $TAG"
+          fi
+
+          # Create the release with the APK already attached
+          gh release create "$TAG" \
             "FindMe-v${{ steps.version.outputs.version }}.apk" \
-            --clobber
+            --title "$TAG" \
+            --notes "$NOTES" \
+            --verify-tag
 
       - name: Cleanup keystore
         if: always()
