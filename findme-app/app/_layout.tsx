@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { ThemeProvider, useTheme } from "../lib/theme-context";
 import { AuthProvider, useAuth } from "../lib/auth-context";
+import { setupNotificationHandlers } from "../lib/push-notifications";
 import { LoadingScreen } from "../components/LoadingScreen";
 
 function RootNav() {
@@ -13,6 +14,10 @@ function RootNav() {
   const { colors, effectiveMode } = useTheme();
   const segments = useSegments();
   const router = useRouter();
+
+  useEffect(() => {
+    setupNotificationHandlers();
+  }, []);
 
   useEffect(() => {
     if (isLoading) return;

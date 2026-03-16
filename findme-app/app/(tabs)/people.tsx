@@ -8,7 +8,9 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { usePolling } from "../../lib/use-polling";
+import { useNetwork } from "../../lib/use-network";
 import { AvatarCircle } from "../../components/AvatarCircle";
+import { OfflineBanner } from "../../components/OfflineBanner";
 import { InviteModal } from "../../components/InviteModal";
 import { PendingInvitations } from "../../components/PendingInvitations";
 import type { ThemeColors } from "../../lib/theme";
@@ -39,6 +41,7 @@ function getPersonLastSeen(person: PersonWithDevices): string | null {
 export default function PeopleScreen() {
   const { apiClient } = useAuth();
   const { colors } = useTheme();
+  const { isConnected } = useNetwork();
   const router = useRouter();
   const styles = createStyles(colors);
   const [showInvite, setShowInvite] = useState(false);
@@ -48,7 +51,9 @@ export default function PeopleScreen() {
   const fetchPeople = useCallback(() => apiClient.getPeople().then((r) => r.data ?? []), [apiClient]);
   const fetchPending = useCallback(() => apiClient.getPendingInvitations().then((r) => r.data ?? []), [apiClient]);
 
-  const { data: people, refetch: refetchPeople } = usePolling<PersonWithDevices[]>(fetchPeople, 30000);
+  const { data: people, refetch: refetchPeople, isOffline: peopleOffline } = usePolling<PersonWithDevices[]>(
+    fetchPeople, 30000, { cacheKey: "people", isConnected }
+  );
   const { data: pending, refetch: refetchPending } = usePolling<PeopleSharePublic[]>(fetchPending, 30000);
 
   async function handleRefresh() {
@@ -63,6 +68,7 @@ export default function PeopleScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      <OfflineBanner isOffline={peopleOffline} />
       <View style={styles.header}>
         <Text style={styles.title}>People</Text>
         <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInvite(true)}>

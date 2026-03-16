@@ -63,6 +63,16 @@ export const qrAuthSchema = z.object({
   platform: z.enum(["ios", "android", "web"]),
 });
 
+export const notificationPreferencesSchema = z.object({
+  emailInvitations: z.boolean().optional(),
+  emailGeofence: z.boolean().optional(),
+  pushInvitations: z.boolean().optional(),
+  pushGeofence: z.boolean().optional(),
+  pushLocationSharing: z.boolean().optional(),
+  quietHoursStart: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  quietHoursEnd: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+});
+
 export const settingsUpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   currentPassword: z.string().optional(),

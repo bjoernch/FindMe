@@ -137,6 +137,18 @@ export interface ShareLink {
   createdAt: string;
 }
 
+// ── Notification Preferences ──────────────────────────────────────
+
+export interface NotificationPreferences {
+  emailInvitations: boolean;
+  emailGeofence: boolean;
+  pushInvitations: boolean;
+  pushGeofence: boolean;
+  pushLocationSharing: boolean;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+}
+
 // ── QR Pairing ────────────────────────────────────────────────────
 
 export interface QrAuthRequest {

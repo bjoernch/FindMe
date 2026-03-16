@@ -5,6 +5,8 @@ import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
 import { peopleInviteSchema } from "@/lib/validations";
 import { sendInvitationEmail } from "@/lib/email";
+import { sendPushWithPrefs } from "@/lib/push";
+import { shouldNotify } from "@/lib/notification-preferences";
 import type { PeopleSharePublic } from "@/types/api";
 
 export async function POST(req: NextRequest) {
@@ -78,14 +80,23 @@ export async function POST(req: NextRequest) {
           },
         };
 
-        // Send email notification for re-invite
+        // Send notifications for re-invite (respecting preferences)
         const fromUser = await prisma.user.findUnique({ where: { id: authResult.id } });
+        const fromName = fromUser?.name || fromUser?.email || "Someone";
         const instanceUrl = process.env.FINDME_PUBLIC_URL || process.env.NEXTAUTH_URL || "";
-        sendInvitationEmail(
-          targetUser.email,
-          fromUser?.name || fromUser?.email || "Someone",
-          instanceUrl
-        ).catch((e) => log.error("people.invite", "Re-invite email failed", e));
+
+        shouldNotify(targetUser.id, "email", "invitations").then((allowed) => {
+          if (allowed) {
+            sendInvitationEmail(targetUser.email, fromName, instanceUrl)
+              .catch((e) => log.error("people.invite", "Re-invite email failed", e));
+          }
+        });
+
+        sendPushWithPrefs(
+          targetUser.id, "New Invitation",
+          `${fromName} wants to share locations with you`,
+          "invitations", { type: "invitation", shareId: updated.id }
+        ).catch((e) => log.error("people.invite", "Re-invite push failed", e));
 
         return apiSuccess(result, undefined, 201);
       }
@@ -115,14 +126,23 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    // Send email notification (async, don't block response)
+    // Send notifications (async, don't block response, respect preferences)
     const fromUser = await prisma.user.findUnique({ where: { id: authResult.id } });
+    const fromName = fromUser?.name || fromUser?.email || "Someone";
     const instanceUrl = process.env.FINDME_PUBLIC_URL || process.env.NEXTAUTH_URL || "";
-    sendInvitationEmail(
-      targetUser.email,
-      fromUser?.name || fromUser?.email || "Someone",
-      instanceUrl
-    ).catch((e) => log.error("people.invite", "Background task failed", e));
+
+    shouldNotify(targetUser.id, "email", "invitations").then((allowed) => {
+      if (allowed) {
+        sendInvitationEmail(targetUser.email, fromName, instanceUrl)
+          .catch((e) => log.error("people.invite", "Invite email failed", e));
+      }
+    });
+
+    sendPushWithPrefs(
+      targetUser.id, "New Invitation",
+      `${fromName} wants to share locations with you`,
+      "invitations", { type: "invitation", shareId: share.id }
+    ).catch((e) => log.error("people.invite", "Invite push failed", e));
 
     return apiSuccess(result, undefined, 201);
   } catch (error) {

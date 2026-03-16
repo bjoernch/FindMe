@@ -11,7 +11,10 @@ import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { usePolling } from "../../lib/use-polling";
 import { useSSE } from "../../lib/use-sse";
+import { useNetwork } from "../../lib/use-network";
+import { dequeueAll } from "../../lib/location-queue";
 import { getStoredValue, setStoredValue } from "../../lib/storage";
+import { OfflineBanner } from "../../components/OfflineBanner";
 import { getAvatarColor, getInitials } from "../../lib/avatar";
 import { MAP_TILE_LAYERS, TILE_LAYER_IDS, TILE_BG_COLORS } from "../../lib/map-tiles";
 import type { MapTileLayerId } from "../../lib/map-tiles";
@@ -240,6 +243,7 @@ window.updateMarker = function(data) {
 export default function MapScreen() {
   const { apiClient, serverUrl, isLoading: authLoading, logout } = useAuth();
   const { colors, effectiveMode } = useTheme();
+  const { isConnected } = useNetwork();
   const { focusLat, focusLng } = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
   const insets = useSafeAreaInsets();
   const styles = createStyles(colors);
@@ -300,8 +304,12 @@ export default function MapScreen() {
     [apiClient]
   );
 
-  const { data: devices, refetch: refetchDevices } = usePolling<DeviceWithLocation[]>(fetchDevices, 30000);
-  const { data: people, refetch: refetchPeople } = usePolling<PersonWithDevices[]>(fetchPeople, 30000);
+  const { data: devices, refetch: refetchDevices, isOffline: devicesOffline } = usePolling<DeviceWithLocation[]>(
+    fetchDevices, 30000, { cacheKey: "latestLocations", isConnected }
+  );
+  const { data: people, refetch: refetchPeople } = usePolling<PersonWithDevices[]>(
+    fetchPeople, 30000, { cacheKey: "people", isConnected }
+  );
 
   const handleSSELocationUpdate = useCallback(() => {
     refetchDevices();
@@ -318,6 +326,27 @@ export default function MapScreen() {
       );
     }
   }, [logout]);
+
+  // Flush queued location updates when back online
+  useEffect(() => {
+    if (!isConnected) return;
+    (async () => {
+      const queued = await dequeueAll();
+      for (const entry of queued) {
+        try {
+          await fetch(`${entry.serverUrl}/api/location/update`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${entry.deviceToken}` },
+            body: JSON.stringify({
+              lat: entry.lat, lng: entry.lng, accuracy: entry.accuracy,
+              altitude: entry.altitude, speed: entry.speed, heading: entry.heading,
+              batteryLevel: entry.batteryLevel,
+            }),
+          });
+        } catch { /* skip failed entries */ }
+      }
+    })();
+  }, [isConnected]);
 
   const { connected: sseConnected } = useSSE({
     url: serverUrl || "",
@@ -346,6 +375,7 @@ export default function MapScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
+      <OfflineBanner isOffline={devicesOffline} />
       <WebView
         ref={webViewRef}
         source={{ html, baseUrl: serverUrl }}

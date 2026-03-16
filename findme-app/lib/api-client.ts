@@ -17,6 +17,7 @@ import type {
   ShareExpiry,
   QrAuthRequest,
   QrAuthResponse,
+  NotificationPreferences,
 } from "./types";
 
 export class FindMeClient {
@@ -390,5 +391,45 @@ export class FindMeClient {
     return this.request<{ avatar: null }>("/api/settings/avatar", {
       method: "DELETE",
     });
+  }
+
+  // ── Notification Preferences ──────────────────────────────────
+
+  async getNotificationPreferences(): Promise<ApiResponse<NotificationPreferences>> {
+    return this.request<NotificationPreferences>("/api/settings/notifications");
+  }
+
+  async updateNotificationPreferences(
+    data: Partial<NotificationPreferences>
+  ): Promise<ApiResponse<NotificationPreferences>> {
+    return this.request<NotificationPreferences>("/api/settings/notifications", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ── Push Token ────────────────────────────────────────────────
+
+  async registerPushToken(token: string, platform: string): Promise<ApiResponse<{ registered: boolean }>> {
+    return this.request<{ registered: boolean }>("/api/push", {
+      method: "POST",
+      body: JSON.stringify({ token, platform }),
+    });
+  }
+
+  async unregisterPushToken(token: string): Promise<ApiResponse<{ unregistered: boolean }>> {
+    return this.request<{ unregistered: boolean }>("/api/push", {
+      method: "DELETE",
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  // ── Export ─────────────────────────────────────────────────────
+
+  getExportUrl(deviceId: string, format: "gpx" | "csv", from?: string, to?: string): string {
+    const params = new URLSearchParams({ format });
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    return `${this.baseUrl}/api/location/${deviceId}/export?${params.toString()}`;
   }
 }

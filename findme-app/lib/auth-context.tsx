@@ -13,6 +13,8 @@ import {
   sendForegroundUpdate,
   showBatteryOptimizationBanner,
 } from "./location-service";
+import { registerForPushNotifications, unregisterPushNotifications } from "./push-notifications";
+import { clearCache } from "./offline-cache";
 import type { UserPublic } from "./types";
 
 interface AuthContextType {
@@ -75,6 +77,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const meResult = await apiClient.getMe();
         if (meResult.success && meResult.data) {
           setUser(meResult.data);
+          // Re-register push token (handles token refresh)
+          registerForPushNotifications(apiClient).catch(() => {});
         } else {
           // Tokens invalid, clear everything
           await clearAll();
@@ -127,6 +131,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (started) showBatteryOptimizationBanner();
       }).catch(console.error);
 
+      registerForPushNotifications(apiClient).catch(() => {});
+
       return null; // No error
     }
 
@@ -152,6 +158,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       startBackgroundTracking().then((started) => {
         if (started) showBatteryOptimizationBanner();
       }).catch(console.error);
+
+      registerForPushNotifications(apiClient).catch(() => {});
 
       return null;
     }
@@ -186,6 +194,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (started) showBatteryOptimizationBanner();
       }).catch(console.error);
 
+      registerForPushNotifications(apiClient).catch(() => {});
+
       return null;
     }
 
@@ -194,6 +204,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     await stopBackgroundTracking();
+    unregisterPushNotifications(apiClient).catch(() => {});
+    await clearCache();
     await clearAll();
     setUser(null);
     apiClient.setTokens("", "");

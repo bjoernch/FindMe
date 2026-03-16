@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 import { sseManager } from "./sse-manager";
-import { sendPushNotification } from "./push";
+import { sendPushWithPrefs } from "./push";
 import { log } from "@/lib/logger";
 
 // In-memory cache: userId -> { geofenceId -> isInside }
@@ -78,7 +78,7 @@ export async function checkGeofences(
       });
 
       // Send push notification
-      sendPushNotification(userId, "Geofence Alert", message).catch(
+      sendPushWithPrefs(userId, "Geofence Alert", message, "geofence").catch(
         (e) => log.error("geofence", "Push notification failed", e)
       );
     } else if (!isInside && wasInside && fence.onExit) {
@@ -105,7 +105,7 @@ export async function checkGeofences(
         timestamp: new Date().toISOString(),
       });
 
-      sendPushNotification(userId, "Geofence Alert", message).catch(
+      sendPushWithPrefs(userId, "Geofence Alert", message, "geofence").catch(
         (e) => log.error("geofence", "Push notification failed", e)
       );
     } else {

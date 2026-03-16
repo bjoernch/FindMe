@@ -5,6 +5,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { getStoredValue } from "../../lib/storage";
@@ -12,7 +14,7 @@ import { startBackgroundTracking, stopBackgroundTracking, isTrackingActive, show
 import { AvatarCircle } from "../../components/AvatarCircle";
 import { AvatarCropModal } from "../../components/AvatarCropModal";
 import type { ThemeColors } from "../../lib/theme";
-import type { DevicePublic } from "../../lib/types";
+import type { DevicePublic, NotificationPreferences } from "../../lib/types";
 
 function formatLastSeen(lastSeen: string | null): string {
   if (!lastSeen) return "Never";
@@ -50,6 +52,17 @@ export default function SettingsScreen() {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [deviceNameInput, setDeviceNameInput] = useState("");
 
+  // Notification preferences
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences>({
+    emailInvitations: true, emailGeofence: true,
+    pushInvitations: true, pushGeofence: true, pushLocationSharing: true,
+    quietHoursStart: null, quietHoursEnd: null,
+  });
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  // Export
+  const [exporting, setExporting] = useState<string | null>(null);
+
   const loadDevices = useCallback(async () => {
     setDevicesLoading(true);
     try {
@@ -64,11 +77,55 @@ export default function SettingsScreen() {
     }
   }, [apiClient]);
 
+  const loadNotifPrefs = useCallback(async () => {
+    setNotifLoading(true);
+    try {
+      const res = await apiClient.getNotificationPreferences();
+      if (res.success && res.data) setNotifPrefs(res.data);
+    } catch { /* silent */ } finally { setNotifLoading(false); }
+  }, [apiClient]);
+
+  async function updateNotifPref(key: keyof NotificationPreferences, value: boolean | string | null) {
+    const prev = { ...notifPrefs };
+    setNotifPrefs((p) => ({ ...p, [key]: value }));
+    try {
+      const res = await apiClient.updateNotificationPreferences({ [key]: value });
+      if (!res.success) { setNotifPrefs(prev); Alert.alert("Error", res.error || "Could not update preference"); }
+    } catch { setNotifPrefs(prev); Alert.alert("Error", "Failed to update preference"); }
+  }
+
+  async function handleExport(device: DevicePublic, format: "gpx" | "csv") {
+    setExporting(device.id);
+    try {
+      const url = apiClient.getExportUrl(device.id, format);
+      const fileName = `${device.name.replace(/[^a-zA-Z0-9]/g, "_")}_export.${format}`;
+      const token = apiClient.getAccessToken();
+      const destFile = new File(Paths.cache, fileName);
+      const downloaded = await File.downloadFileAsync(url, destFile, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(downloaded.uri, {
+          mimeType: format === "gpx" ? "application/gpx+xml" : "text/csv",
+          dialogTitle: `Share ${format.toUpperCase()} Export`,
+        });
+      } else {
+        Alert.alert("Exported", `File saved to ${downloaded.uri}`);
+      }
+    } catch (err) {
+      Alert.alert("Error", "Export failed");
+    } finally {
+      setExporting(null);
+    }
+  }
+
   useEffect(() => {
     isTrackingActive().then(setTrackingEnabled);
     getStoredValue("deviceId").then(setDeviceId);
     loadDevices();
-  }, [loadDevices]);
+    loadNotifPrefs();
+  }, [loadDevices, loadNotifPrefs]);
 
   // Sync nameInput when user changes
   useEffect(() => {
@@ -414,6 +471,138 @@ export default function SettingsScreen() {
             </View>
             <Text style={styles.settingHint}>{trackingEnabled ? "Your location is being shared" : "Location sharing is paused"}</Text>
           </View>
+        </View>
+
+        {/* Notifications */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
+          <View style={styles.card}>
+            {notifLoading ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <>
+                <Text style={[styles.settingLabel, { marginBottom: 8, fontWeight: "700" }]}>Email</Text>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Invitations</Text>
+                  <Switch value={notifPrefs.emailInvitations} onValueChange={(v) => updateNotifPref("emailInvitations", v)} trackColor={{ false: colors.surfaceLight, true: colors.accent }} thumbColor="#fff" />
+                </View>
+                <View style={[styles.settingRow, { marginTop: 8 }]}>
+                  <Text style={styles.settingLabel}>Geofence Alerts</Text>
+                  <Switch value={notifPrefs.emailGeofence} onValueChange={(v) => updateNotifPref("emailGeofence", v)} trackColor={{ false: colors.surfaceLight, true: colors.accent }} thumbColor="#fff" />
+                </View>
+
+                <View style={{ height: 1, backgroundColor: colors.surfaceLight, marginVertical: 14 }} />
+
+                <Text style={[styles.settingLabel, { marginBottom: 8, fontWeight: "700" }]}>Push</Text>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Invitations</Text>
+                  <Switch value={notifPrefs.pushInvitations} onValueChange={(v) => updateNotifPref("pushInvitations", v)} trackColor={{ false: colors.surfaceLight, true: colors.accent }} thumbColor="#fff" />
+                </View>
+                <View style={[styles.settingRow, { marginTop: 8 }]}>
+                  <Text style={styles.settingLabel}>Geofence Alerts</Text>
+                  <Switch value={notifPrefs.pushGeofence} onValueChange={(v) => updateNotifPref("pushGeofence", v)} trackColor={{ false: colors.surfaceLight, true: colors.accent }} thumbColor="#fff" />
+                </View>
+                <View style={[styles.settingRow, { marginTop: 8 }]}>
+                  <Text style={styles.settingLabel}>Location Sharing</Text>
+                  <Switch value={notifPrefs.pushLocationSharing} onValueChange={(v) => updateNotifPref("pushLocationSharing", v)} trackColor={{ false: colors.surfaceLight, true: colors.accent }} thumbColor="#fff" />
+                </View>
+
+                <View style={{ height: 1, backgroundColor: colors.surfaceLight, marginVertical: 14 }} />
+
+                <Text style={[styles.settingLabel, { marginBottom: 8, fontWeight: "700" }]}>Quiet Hours</Text>
+                <Text style={styles.settingHint}>No push notifications during these hours</Text>
+                <View style={[styles.settingRow, { marginTop: 8 }]}>
+                  <TextInput
+                    style={[styles.serverInput, { flex: 1, textAlign: "center" }]}
+                    value={notifPrefs.quietHoursStart || ""}
+                    onChangeText={(v) => setNotifPrefs((p) => ({ ...p, quietHoursStart: v || null }))}
+                    onEndEditing={() => {
+                      if (notifPrefs.quietHoursStart && /^\d{2}:\d{2}$/.test(notifPrefs.quietHoursStart)) {
+                        updateNotifPref("quietHoursStart", notifPrefs.quietHoursStart);
+                      }
+                    }}
+                    placeholder="22:00"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                  />
+                  <Text style={[styles.settingLabel, { marginHorizontal: 8 }]}>to</Text>
+                  <TextInput
+                    style={[styles.serverInput, { flex: 1, textAlign: "center" }]}
+                    value={notifPrefs.quietHoursEnd || ""}
+                    onChangeText={(v) => setNotifPrefs((p) => ({ ...p, quietHoursEnd: v || null }))}
+                    onEndEditing={() => {
+                      if (notifPrefs.quietHoursEnd && /^\d{2}:\d{2}$/.test(notifPrefs.quietHoursEnd)) {
+                        updateNotifPref("quietHoursEnd", notifPrefs.quietHoursEnd);
+                      }
+                    }}
+                    placeholder="07:00"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                  />
+                </View>
+                {(notifPrefs.quietHoursStart || notifPrefs.quietHoursEnd) && (
+                  <TouchableOpacity
+                    style={{ marginTop: 8 }}
+                    onPress={() => {
+                      setNotifPrefs((p) => ({ ...p, quietHoursStart: null, quietHoursEnd: null }));
+                      apiClient.updateNotificationPreferences({ quietHoursStart: null, quietHoursEnd: null });
+                    }}
+                  >
+                    <Text style={{ color: colors.error, fontSize: 13, fontWeight: "600" }}>Clear quiet hours</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Export Data */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>EXPORT DATA</Text>
+          {devices.length === 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.settingHint}>No devices to export from</Text>
+            </View>
+          ) : (
+            devices.map((device) => (
+              <View key={device.id} style={[styles.card, { marginBottom: 8 }]}>
+                <Text style={[styles.settingLabel, { fontWeight: "600", marginBottom: 8 }]}>{device.name}</Text>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <TouchableOpacity
+                    style={[styles.nameSaveBtn, { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10 }]}
+                    onPress={() => handleExport(device, "gpx")}
+                    disabled={exporting === device.id}
+                  >
+                    {exporting === device.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="download-outline" size={16} color="#fff" />
+                        <Text style={styles.nameSaveText}>GPX</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.nameSaveBtn, { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10 }]}
+                    onPress={() => handleExport(device, "csv")}
+                    disabled={exporting === device.id}
+                  >
+                    {exporting === device.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="download-outline" size={16} color="#fff" />
+                        <Text style={styles.nameSaveText}>CSV</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.settingHint}>Export all location history</Text>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Server */}

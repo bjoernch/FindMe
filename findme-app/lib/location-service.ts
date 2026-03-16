@@ -5,6 +5,7 @@ import { Alert, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
 import { LOCATION_TASK_NAME } from "./location-task";
 import { getStoredValue, setStoredValue } from "./storage";
+import { enqueue } from "./location-queue";
 import type { FindMeClient } from "./api-client";
 
 export async function requestLocationPermissions(): Promise<boolean> {
@@ -176,13 +177,33 @@ export async function sendForegroundUpdate(
     // Battery info unavailable
   }
 
-  await apiClient.sendLocationUpdate({
-    lat: location.coords.latitude,
-    lng: location.coords.longitude,
-    accuracy: location.coords.accuracy ?? undefined,
-    altitude: location.coords.altitude ?? undefined,
-    speed: location.coords.speed ?? undefined,
-    heading: location.coords.heading ?? undefined,
-    batteryLevel,
-  });
+  try {
+    await apiClient.sendLocationUpdate({
+      lat: location.coords.latitude,
+      lng: location.coords.longitude,
+      accuracy: location.coords.accuracy ?? undefined,
+      altitude: location.coords.altitude ?? undefined,
+      speed: location.coords.speed ?? undefined,
+      heading: location.coords.heading ?? undefined,
+      batteryLevel,
+    });
+  } catch {
+    // Queue for later when back online
+    const serverUrl = apiClient.getBaseUrl();
+    const deviceToken = apiClient.getDeviceToken();
+    if (serverUrl && deviceToken) {
+      await enqueue({
+        lat: location.coords.latitude,
+        lng: location.coords.longitude,
+        accuracy: location.coords.accuracy ?? undefined,
+        altitude: location.coords.altitude ?? undefined,
+        speed: location.coords.speed ?? undefined,
+        heading: location.coords.heading ?? undefined,
+        batteryLevel,
+        timestamp: Date.now(),
+        deviceToken,
+        serverUrl,
+      });
+    }
+  }
 }

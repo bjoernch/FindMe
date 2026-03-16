@@ -1,8 +1,12 @@
 services:
   findme:
+    # Option 1: Build locally (default for development)
     build:
       context: .
       dockerfile: Dockerfile
+    # Option 2: Use pre-built image from GitHub Container Registry
+    # Comment out 'build' above and uncomment 'image' below:
+    # image: ghcr.io/bjoernch/findme:latest
     expose:
       - "3000"
     ports:

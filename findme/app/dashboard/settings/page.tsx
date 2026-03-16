@@ -8,7 +8,25 @@ import {
   browserSupportsWebAuthn,
 } from "@simplewebauthn/browser";
 
+interface NotificationPrefs {
+  emailInvitations: boolean;
+  emailGeofence: boolean;
+  pushInvitations: boolean;
+  pushGeofence: boolean;
+  pushLocationSharing: boolean;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+}
 
+const DEFAULT_PREFS: NotificationPrefs = {
+  emailInvitations: true,
+  emailGeofence: true,
+  pushInvitations: true,
+  pushGeofence: true,
+  pushLocationSharing: true,
+  quietHoursStart: null,
+  quietHoursEnd: null,
+};
 
 export default function SettingsPage() {
 
@@ -22,6 +40,10 @@ export default function SettingsPage() {
     text: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Notification preferences state
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
+  const [notifLoading, setNotifLoading] = useState(true);
 
   // QR pairing state
   const [qrSession, setQrSession] = useState<QrSessionPublic | null>(null);
@@ -55,7 +77,45 @@ export default function SettingsPage() {
   useEffect(() => {
     setSupportsPasskey(browserSupportsWebAuthn());
     loadPasskeys();
+    loadNotificationPrefs();
   }, []);
+
+  async function loadNotificationPrefs() {
+    try {
+      const res = await fetch("/api/settings/notifications");
+      const data = await res.json();
+      if (data.success && data.data) {
+        setNotifPrefs({
+          emailInvitations: data.data.emailInvitations ?? true,
+          emailGeofence: data.data.emailGeofence ?? true,
+          pushInvitations: data.data.pushInvitations ?? true,
+          pushGeofence: data.data.pushGeofence ?? true,
+          pushLocationSharing: data.data.pushLocationSharing ?? true,
+          quietHoursStart: data.data.quietHoursStart ?? null,
+          quietHoursEnd: data.data.quietHoursEnd ?? null,
+        });
+      }
+    } catch {
+      // use defaults
+    } finally {
+      setNotifLoading(false);
+    }
+  }
+
+  async function updateNotifPref(update: Partial<NotificationPrefs>) {
+    const newPrefs = { ...notifPrefs, ...update };
+    setNotifPrefs(newPrefs);
+    try {
+      await fetch("/api/settings/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(update),
+      });
+    } catch {
+      // revert on failure
+      setNotifPrefs(notifPrefs);
+    }
+  }
 
   async function loadPasskeys() {
     setPasskeysLoading(true);
@@ -481,6 +541,71 @@ export default function SettingsPage() {
           )}
         </div>
       )}
+
+      {/* Notifications */}
+      <div className="bg-card border border-edge rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold text-heading mb-4">Notifications</h2>
+        {notifLoading ? (
+          <p className="text-sub text-sm">Loading preferences...</p>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-sub mb-2">Email Notifications</h3>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={notifPrefs.emailInvitations} onChange={(e) => updateNotifPref({ emailInvitations: e.target.checked })} className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-heading text-sm">Invitations</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={notifPrefs.emailGeofence} onChange={(e) => updateNotifPref({ emailGeofence: e.target.checked })} className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-heading text-sm">Geofence alerts</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-sub mb-2">Push Notifications</h3>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={notifPrefs.pushInvitations} onChange={(e) => updateNotifPref({ pushInvitations: e.target.checked })} className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-heading text-sm">Invitations</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={notifPrefs.pushGeofence} onChange={(e) => updateNotifPref({ pushGeofence: e.target.checked })} className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-heading text-sm">Geofence alerts</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={notifPrefs.pushLocationSharing} onChange={(e) => updateNotifPref({ pushLocationSharing: e.target.checked })} className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-heading text-sm">Location sharing updates</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-sub mb-2">Quiet Hours</h3>
+              <p className="text-hint text-xs mb-2">Suppress push notifications during these hours.</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={notifPrefs.quietHoursStart || ""}
+                  onChange={(e) => updateNotifPref({ quietHoursStart: e.target.value || null })}
+                  className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500"
+                />
+                <span className="text-sub text-sm">to</span>
+                <input
+                  type="time"
+                  value={notifPrefs.quietHoursEnd || ""}
+                  onChange={(e) => updateNotifPref({ quietHoursEnd: e.target.value || null })}
+                  className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500"
+                />
+                {(notifPrefs.quietHoursStart || notifPrefs.quietHoursEnd) && (
+                  <button onClick={() => updateNotifPref({ quietHoursStart: null, quietHoursEnd: null })} className="text-hint text-xs hover:text-heading transition-colors">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Profile */}
       <form
