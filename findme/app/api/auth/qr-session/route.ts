@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
+import { getPublicUrl } from "@/lib/settings";
 import type { QrSessionPublic } from "@/types/api";
 
 const QR_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -30,9 +31,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Use FINDME_PUBLIC_URL for QR codes (especially important for dev/emulator setups
-    // where the browser URL differs from the URL mobile devices need to reach the server)
-    const serverUrl = process.env.FINDME_PUBLIC_URL || process.env.NEXTAUTH_URL || req.nextUrl.origin;
+    const serverUrl = await getPublicUrl() || req.nextUrl.origin;
     const qrData = `findme://pair?url=${encodeURIComponent(serverUrl)}&session=${session.token}`;
 
     const result: QrSessionPublic = {

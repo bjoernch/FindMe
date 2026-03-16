@@ -7,6 +7,7 @@ import { peopleInviteSchema } from "@/lib/validations";
 import { sendInvitationEmail } from "@/lib/email";
 import { sendPushWithPrefs } from "@/lib/push";
 import { shouldNotify } from "@/lib/notification-preferences";
+import { getPublicUrl } from "@/lib/settings";
 import type { PeopleSharePublic } from "@/types/api";
 
 export async function POST(req: NextRequest) {
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
         // Send notifications for re-invite (respecting preferences)
         const fromUser = await prisma.user.findUnique({ where: { id: authResult.id } });
         const fromName = fromUser?.name || fromUser?.email || "Someone";
-        const instanceUrl = process.env.FINDME_PUBLIC_URL || process.env.NEXTAUTH_URL || "";
+        const instanceUrl = await getPublicUrl();
 
         shouldNotify(targetUser.id, "email", "invitations").then((allowed) => {
           if (allowed) {
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
     // Send notifications (async, don't block response, respect preferences)
     const fromUser = await prisma.user.findUnique({ where: { id: authResult.id } });
     const fromName = fromUser?.name || fromUser?.email || "Someone";
-    const instanceUrl = process.env.FINDME_PUBLIC_URL || process.env.NEXTAUTH_URL || "";
+    const instanceUrl = await getPublicUrl();
 
     shouldNotify(targetUser.id, "email", "invitations").then((allowed) => {
       if (allowed) {

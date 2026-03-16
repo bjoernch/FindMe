@@ -35,9 +35,14 @@ export default function AdminPage() {
   const [devices, setDevices] = useState<AdminDeviceView[]>([]);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"users" | "devices" | "system" | "smtp">("users");
+  const [tab, setTab] = useState<"users" | "devices" | "system" | "general" | "smtp">("users");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+
+  // General settings state
+  const [general, setGeneral] = useState({ public_url: "", app_name: "" });
+  const [generalEnvDefaults, setGeneralEnvDefaults] = useState({ public_url: "", app_name: "FindMe" });
+  const [generalSaving, setGeneralSaving] = useState(false);
 
   // SMTP state
   const [smtp, setSmtp] = useState({
@@ -66,22 +71,28 @@ export default function AdminPage() {
 
   async function loadData() {
     try {
-      const [uRes, dRes, sRes, smtpRes] = await Promise.all([
+      const [uRes, dRes, sRes, smtpRes, generalRes] = await Promise.all([
         fetch("/api/admin/users"),
         fetch("/api/admin/devices"),
         fetch("/api/admin/system"),
         fetch("/api/admin/smtp"),
+        fetch("/api/admin/settings"),
       ]);
       const uData: ApiResponse<AdminUserView[]> = await uRes.json();
       const dData: ApiResponse<AdminDeviceView[]> = await dRes.json();
       const sData: ApiResponse<SystemInfo> = await sRes.json();
       const smtpData = await smtpRes.json();
+      const generalData = await generalRes.json();
       if (uData.success && uData.data) setUsers(uData.data);
       if (dData.success && dData.data) setDevices(dData.data);
       if (sData.success && sData.data) setSystemInfo(sData.data);
       if (smtpData.success && smtpData.data) {
         setSmtp((prev) => ({ ...prev, ...smtpData.data.settings }));
         setSmtpEnvConfigured(smtpData.data.envConfigured);
+      }
+      if (generalData.success && generalData.data) {
+        setGeneral((prev) => ({ ...prev, ...generalData.data.settings }));
+        setGeneralEnvDefaults(generalData.data.envDefaults);
       }
     } catch {
       // silent
@@ -235,6 +246,16 @@ export default function AdminPage() {
           }`}
         >
           Devices ({devices.length})
+        </button>
+        <button
+          onClick={() => setTab("general")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            tab === "general"
+              ? "bg-card text-heading shadow-sm"
+              : "text-sub hover:text-heading"
+          }`}
+        >
+          Settings
         </button>
         <button
           onClick={() => setTab("system")}
@@ -592,6 +613,81 @@ export default function AdminPage() {
       {tab === "system" && !systemInfo && (
         <div className="bg-card border border-edge rounded-xl p-8 text-center">
           <p className="text-hint">Failed to load system information.</p>
+        </div>
+      )}
+
+      {/* General Settings */}
+      {tab === "general" && (
+        <div className="space-y-6">
+          <div className="bg-card border border-edge rounded-xl p-6">
+            <h3 className="text-base font-semibold text-heading mb-2">Server Settings</h3>
+            <p className="text-sm text-sub mb-4">
+              Configure your FindMe instance. These settings are stored in the database and take priority over environment variables.
+            </p>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="block text-sm text-sub mb-1">Public URL</label>
+                <input
+                  type="url"
+                  value={general.public_url}
+                  onChange={(e) => setGeneral({ ...general, public_url: e.target.value })}
+                  placeholder={generalEnvDefaults.public_url || "https://findme.example.com"}
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-hint mt-1">
+                  The URL where this instance is reachable from the internet. Used for QR codes and invite links.
+                  {generalEnvDefaults.public_url && !general.public_url && (
+                    <span className="block mt-0.5">
+                      Currently using env var: <code className="font-mono bg-input px-1 rounded">{generalEnvDefaults.public_url}</code>
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">App Name</label>
+                <input
+                  type="text"
+                  value={general.app_name}
+                  onChange={(e) => setGeneral({ ...general, app_name: e.target.value })}
+                  placeholder={generalEnvDefaults.app_name}
+                  className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-hint mt-1">
+                  Display name for your instance. Used in emails and notifications.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                onClick={async () => {
+                  setGeneralSaving(true);
+                  try {
+                    const res = await fetch("/api/admin/settings", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(general),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setActionMessage("Settings saved.");
+                    } else {
+                      setActionMessage(`Error: ${data.error}`);
+                    }
+                  } catch {
+                    setActionMessage("Failed to save settings.");
+                  }
+                  setGeneralSaving(false);
+                  setTimeout(() => setActionMessage(null), 3000);
+                }}
+                disabled={generalSaving}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {generalSaving ? "Saving..." : "Save Settings"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
