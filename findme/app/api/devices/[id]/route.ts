@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
 import { deviceUpdateSchema } from "@/lib/validations";
+import { sseManager } from "@/lib/sse-manager";
 
 export async function PATCH(
   req: NextRequest,
@@ -89,6 +90,9 @@ export async function DELETE(
       where: { id },
       data: { isActive: false },
     });
+
+    // Broadcast device_revoked event via SSE so the device logs out in real-time
+    sseManager.broadcastToUser(authResult.id, "device_revoked", { deviceId: id });
 
     return apiSuccess({ message: "Device deactivated" });
   } catch (error) {

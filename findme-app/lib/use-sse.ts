@@ -7,9 +7,10 @@ interface SSEOptions {
   token: string | null;
   enabled: boolean;
   onLocationUpdate?: (data: any) => void;
+  onDeviceRevoked?: (data: { deviceId: string }) => void;
 }
 
-export function useSSE({ url, token, enabled, onLocationUpdate }: SSEOptions) {
+export function useSSE({ url, token, enabled, onLocationUpdate, onDeviceRevoked }: SSEOptions) {
   const [connected, setConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const retriesRef = useRef(0);
@@ -24,7 +25,7 @@ export function useSSE({ url, token, enabled, onLocationUpdate }: SSEOptions) {
       esRef.current = null;
     }
 
-    const es = new EventSource<"location_update">(`${url}/api/sse`, {
+    const es = new EventSource<"location_update" | "device_revoked">(`${url}/api/sse`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -40,6 +41,13 @@ export function useSSE({ url, token, enabled, onLocationUpdate }: SSEOptions) {
       } catch {}
     });
 
+    es.addEventListener("device_revoked", (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        onDeviceRevoked?.(data);
+      } catch {}
+    });
+
     es.addEventListener("error", () => {
       setConnected(false);
       es.close();
@@ -52,7 +60,7 @@ export function useSSE({ url, token, enabled, onLocationUpdate }: SSEOptions) {
     });
 
     esRef.current = es;
-  }, [url, token, enabled, onLocationUpdate]);
+  }, [url, token, enabled, onLocationUpdate, onDeviceRevoked]);
 
   // Connect/disconnect based on app state
   useEffect(() => {

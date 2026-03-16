@@ -77,6 +77,16 @@ export async function POST(req: NextRequest) {
             createdAt: updated.toUser.createdAt.toISOString(),
           },
         };
+
+        // Send email notification for re-invite
+        const fromUser = await prisma.user.findUnique({ where: { id: authResult.id } });
+        const instanceUrl = process.env.FINDME_PUBLIC_URL || process.env.NEXTAUTH_URL || "";
+        sendInvitationEmail(
+          targetUser.email,
+          fromUser?.name || fromUser?.email || "Someone",
+          instanceUrl
+        ).catch((e) => log.error("people.invite", "Re-invite email failed", e));
+
         return apiSuccess(result, undefined, 201);
       }
     }

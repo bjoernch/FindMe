@@ -93,7 +93,9 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
 
     return true;
   } catch (error) {
-    log.error("email", "Failed to send", error, { to: options.to });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    log.error("email", `Failed to send email to ${options.to}: ${errMsg}`, { stack: errStack });
     return false;
   }
 }

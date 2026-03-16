@@ -82,7 +82,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // Test SMTP connection
+  // Test SMTP by sending an actual test email
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ success: false, data: null, error: "Unauthorized" }, { status: 401 });
@@ -112,18 +112,40 @@ export async function POST(req: NextRequest) {
       auth: { user: config.user, pass: config.pass },
     });
 
-    await transport.verify();
+    // Send an actual test email to the admin's own address
+    const adminEmail = (session.user as { email?: string }).email;
+    if (!adminEmail) {
+      return NextResponse.json({
+        success: false,
+        data: null,
+        error: "No email address found for your account.",
+      });
+    }
+
+    await transport.sendMail({
+      from: config.from,
+      to: adminEmail,
+      subject: "FindMe SMTP Test",
+      html: `<div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+        <h2 style="color: #3b82f6;">SMTP Test Successful</h2>
+        <p>This is a test email from your FindMe instance to verify SMTP configuration.</p>
+        <p style="color: #666; font-size: 12px; margin-top: 24px;">
+          Sent at ${new Date().toISOString()}
+        </p>
+      </div>`,
+      text: `FindMe SMTP Test - This is a test email from your FindMe instance. Sent at ${new Date().toISOString()}`,
+    });
 
     return NextResponse.json({
       success: true,
-      data: { message: "SMTP connection successful" },
+      data: { message: `Test email sent to ${adminEmail}` },
       error: null,
     });
   } catch (error) {
     return NextResponse.json({
       success: false,
       data: null,
-      error: error instanceof Error ? error.message : "SMTP connection failed",
+      error: error instanceof Error ? error.message : "SMTP test failed",
     });
   }
 }

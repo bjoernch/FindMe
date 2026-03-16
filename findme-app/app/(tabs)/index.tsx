@@ -6,6 +6,7 @@ import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Alert } from "react-native";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { usePolling } from "../../lib/use-polling";
@@ -237,7 +238,7 @@ window.updateMarker = function(data) {
 }
 
 export default function MapScreen() {
-  const { apiClient, serverUrl, isLoading: authLoading } = useAuth();
+  const { apiClient, serverUrl, isLoading: authLoading, logout } = useAuth();
   const { colors, effectiveMode } = useTheme();
   const { focusLat, focusLng } = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
   const insets = useSafeAreaInsets();
@@ -307,11 +308,23 @@ export default function MapScreen() {
     refetchPeople();
   }, [refetchDevices, refetchPeople]);
 
+  const handleDeviceRevoked = useCallback(async (data: { deviceId: string }) => {
+    const currentDeviceId = await getStoredValue("deviceId");
+    if (currentDeviceId && currentDeviceId === data.deviceId) {
+      Alert.alert(
+        "Device Revoked",
+        "This device has been revoked by an administrator. You will be logged out.",
+        [{ text: "OK", onPress: () => logout() }]
+      );
+    }
+  }, [logout]);
+
   const { connected: sseConnected } = useSSE({
     url: serverUrl || "",
     token: apiClient.getAccessToken(),
     enabled: !!serverUrl && !authLoading,
     onLocationUpdate: handleSSELocationUpdate,
+    onDeviceRevoked: handleDeviceRevoked,
   });
 
   const bgColor = TILE_BG_COLORS[tileLayerId];
