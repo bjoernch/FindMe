@@ -6,7 +6,7 @@ RUN apk add --no-cache openssl
 
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --legacy-peer-deps && \
-    npm install --os=linux --cpu=x64 sharp --legacy-peer-deps
+    npm install --os=linux sharp --legacy-peer-deps
 
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:20-alpine AS builder

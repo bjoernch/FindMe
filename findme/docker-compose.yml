@@ -1,14 +1,11 @@
 services:
   findme:
-    # Option 1: Build locally (default for development)
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Option 1: Build locally (for development)
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     # Option 2: Use pre-built image from GitHub Container Registry
-    # Comment out 'build' above and uncomment 'image' below:
-    # image: ghcr.io/bjoernch/findme:latest
-    expose:
-      - "3000"
+    image: ghcr.io/bjoernch/findme:latest
     ports:
       - "3000:3000"
     environment:
@@ -42,23 +39,28 @@ services:
       retries: 3
       start_period: 30s
 
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./certs:/etc/caddy/certs:ro
-      - caddy-data:/data
-    depends_on:
-      - findme
-    restart: unless-stopped
+  # ── Optional: Built-in Caddy reverse proxy ──────────────────────────
+  # Uncomment if you don't have an existing reverse proxy (e.g. Nginx Proxy Manager, Traefik).
+  # If you use an external proxy, just point it to http://<host>:3000 and leave this commented out.
+  #
+  # caddy:
+  #   image: caddy:2-alpine
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - ./certs:/etc/caddy/certs:ro
+  #     - caddy-data:/data
+  #   depends_on:
+  #     - findme
+  #   restart: unless-stopped
 
-  # Optional: PostgreSQL for production
+  # ── Optional: PostgreSQL for production ─────────────────────────────
   # 1. Uncomment the postgres service below
   # 2. Change DATABASE_URL above to: postgresql://findme:findme@postgres:5432/findme
   # 3. Add "depends_on: [postgres]" to the findme service
+  #
   # postgres:
   #   image: postgres:16-alpine
   #   environment:
@@ -76,5 +78,5 @@ services:
 
 volumes:
   findme-data:
-  caddy-data:
+  # caddy-data:
   # postgres-data:
