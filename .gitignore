@@ -16,6 +16,11 @@ Thumbs.db
 *.jks
 *.p12
 *.key
+*.crt
+*.keystore
+
+# Certificates
+certs/
 
 # Database files
 *.db

@@ -11,10 +11,9 @@ services:
     environment:
       - DATABASE_URL=file:/app/data/findme.db
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-changeme-in-production}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://100.74.43.69}
-      # FINDME_PUBLIC_URL is used in QR codes for mobile pairing — must be HTTP
-      # so Android/iOS don't reject the self-signed cert
-      - FINDME_PUBLIC_URL=${FINDME_PUBLIC_URL:-http://100.74.43.69:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      # FINDME_PUBLIC_URL is used in QR codes for mobile pairing
+      - FINDME_PUBLIC_URL=${FINDME_PUBLIC_URL:-http://localhost:3000}
       - JWT_SECRET=${JWT_SECRET:-changeme-in-production}
       # Optional: SMTP for email notifications
       - SMTP_HOST=${SMTP_HOST:-}
