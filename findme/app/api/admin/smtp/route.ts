@@ -124,6 +124,11 @@ export async function POST(_req: NextRequest) {
 
     await transport.sendMail({
       from: config.from,
+      sender: config.user,
+      envelope: {
+        from: config.user,
+        to: adminEmail,
+      },
       to: adminEmail,
       subject: "FindMe SMTP Test",
       html: `<div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">

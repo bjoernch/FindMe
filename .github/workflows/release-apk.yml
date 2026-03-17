@@ -19,7 +19,7 @@ on:
 # Generate a keystore:
 #   keytool -genkeypair -v -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 \
 #     -storepass <password> -keypass <password> -alias findme -keystore findme-release.jks \
-#     -dname "CN=FindMe, OU=FindMe, O=FindMe, L=Unknown, ST=Unknown, C=US"
+#     -dname "CN=FindMe, OU=FindMe, O=FindMe, L=FindMe, ST=Unknown, C=US"
 #
 # Encode to base64:
 #   base64 -i findme-release.jks | pbcopy
@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Extract version from tag
         id: version
@@ -52,16 +54,65 @@ jobs:
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION (code: $VERSION_CODE)"
 
+      - name: Check if mobile app changed
+        id: changes
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          # Find previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "app_changed=true" >> "$GITHUB_OUTPUT"
+            echo "No previous tag found, building APK"
+          else
+            # Check if any files in findme-app/ changed
+            CHANGED=$(git diff --name-only "$PREV_TAG" "$TAG" -- findme-app/ | head -1)
+            if [ -n "$CHANGED" ]; then
+              echo "app_changed=true" >> "$GITHUB_OUTPUT"
+              echo "Mobile app changed since $PREV_TAG, building new APK"
+            else
+              echo "app_changed=false" >> "$GITHUB_OUTPUT"
+              echo "No mobile app changes since $PREV_TAG, will reuse previous APK"
+            fi
+          fi
+
+      - name: Reuse APK from previous release
+        id: reuse
+        if: steps.changes.outputs.app_changed == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
+          PREV_VERSION="${PREV_TAG#v}"
+
+          echo "Downloading APK from release $PREV_TAG..."
+          gh release download "$PREV_TAG" --pattern "*.apk" --dir .
+
+          # Rename to current version
+          PREV_APK=$(ls FindMe-v*.apk 2>/dev/null | head -1)
+          if [ -z "$PREV_APK" ]; then
+            echo "::error::No APK found in previous release $PREV_TAG"
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          else
+            mv "$PREV_APK" "FindMe-v${VERSION}.apk"
+            echo "Reusing $PREV_APK as FindMe-v${VERSION}.apk"
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set SOURCE_DATE_EPOCH for reproducible builds
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
 
       - name: Setup Java 17
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: 17
 
       - name: Setup Node 20
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -69,10 +120,12 @@ jobs:
           cache-dependency-path: findme-app/package-lock.json
 
       - name: Install dependencies
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
         run: npm ci --legacy-peer-deps
 
       - name: Decode keystore
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
@@ -84,6 +137,7 @@ jobs:
           echo "Keystore decoded successfully"
 
       - name: Verify version in build.gradle matches tag
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app/android/app
         run: |
           GRADLE_VERSION_CODE=$(grep 'versionCode' build.gradle | head -1 | awk '{print $2}')
@@ -99,10 +153,12 @@ jobs:
           echo "Version check passed: $EXPECTED_NAME (code: $EXPECTED_CODE)"
 
       - name: Bundle JS
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
         run: npx expo export --platform android
 
       - name: Build release APK
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app/android
         env:
           RELEASE_KEYSTORE_PATH: /tmp/findme-release.jks
@@ -112,6 +168,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Rename artifact
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         run: |
           mv findme-app/android/app/build/outputs/apk/release/app-release.apk \
              FindMe-v${{ steps.version.outputs.version }}.apk

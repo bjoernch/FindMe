@@ -85,6 +85,11 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
 
     await transport.sendMail({
       from: config.from,
+      sender: config.user,
+      envelope: {
+        from: config.user,
+        to: options.to,
+      },
       to: options.to,
       subject: options.subject,
       html: options.html,
