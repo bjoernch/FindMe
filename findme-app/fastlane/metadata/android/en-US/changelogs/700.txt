@@ -1,0 +1,4 @@
+- Fully FOSS-compatible: removed all proprietary Google libraries (MLKit, Firebase, GMS)
+- QR pairing now uses camera photo + pure JS decoding (no MLKit barcode scanner)
+- Notifications delivered via polling instead of Firebase Cloud Messaging
+- Significant APK size reduction from removing proprietary dependencies

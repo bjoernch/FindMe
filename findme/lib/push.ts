@@ -11,14 +11,46 @@ interface ExpoPushMessage {
 }
 
 /**
+ * Store a notification in the database for polling-based delivery.
+ * This ensures notifications reach clients without Firebase/FCM (e.g. F-Droid builds).
+ */
+async function storeNotification(
+  userId: string,
+  title: string,
+  body: string,
+  type: string,
+  data?: Record<string, unknown>
+) {
+  try {
+    await prisma.notification.create({
+      data: {
+        userId,
+        title,
+        body,
+        type,
+        data: data ? JSON.stringify(data) : null,
+      },
+    });
+  } catch (error) {
+    log.error("push", "Failed to store notification", error);
+  }
+}
+
+/**
  * Send push notification to all registered devices of a user via Expo Push API.
+ * Also stores notification in DB for polling-based clients (FOSS builds without FCM).
  */
 export async function sendPushNotification(
   userId: string,
   title: string,
   body: string,
+  type: string = "general",
   data?: Record<string, unknown>
 ) {
+  // Always store for polling-based delivery
+  await storeNotification(userId, title, body, type, data);
+
+  // Try Expo Push API (works for clients with FCM, gracefully fails otherwise)
   const tokens = await prisma.pushToken.findMany({
     where: { userId },
   });
@@ -67,5 +99,5 @@ export async function sendPushWithPrefs(
     log.debug("push", `Push suppressed by user preferences: ${type}`, { userId });
     return;
   }
-  return sendPushNotification(userId, title, body, data);
+  return sendPushNotification(userId, title, body, type, data);
 }

@@ -1,75 +1,80 @@
-import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
-import { Platform } from "react-native";
+import notifee, { AndroidImportance } from "@notifee/react-native";
 import type { FindMeClient } from "./api-client";
 
+const CHANNEL_ID = "findme-notifications";
+
 /**
- * Register for push notifications and send the token to the server.
+ * Ensure the notification channel exists (Android requirement).
  */
-export async function registerForPushNotifications(
-  apiClient: FindMeClient
-): Promise<void> {
+async function ensureChannel() {
+  await notifee.createChannel({
+    id: CHANNEL_ID,
+    name: "FindMe Notifications",
+    importance: AndroidImportance.HIGH,
+    sound: "default",
+  });
+}
+
+/**
+ * Display a local notification using notifee (FOSS, no Firebase/FCM).
+ */
+export async function showLocalNotification(
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+) {
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-      return; // User declined, don't push further
-    }
-
-    // Get the Expo push token
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: projectId || undefined,
+    await ensureChannel();
+    await notifee.displayNotification({
+      title,
+      body,
+      data: data as Record<string, string> | undefined,
+      android: {
+        channelId: CHANNEL_ID,
+        smallIcon: "ic_notification",
+        pressAction: { id: "default" },
+      },
     });
-
-    const pushToken = tokenData.data;
-    if (!pushToken) return;
-
-    // Register with server
-    await apiClient.registerPushToken(pushToken, Platform.OS);
   } catch (error) {
-    // Push token registration is non-critical, don't crash the app
-    console.warn("Push notification registration failed:", error);
+    console.warn("Failed to show local notification:", error);
   }
 }
 
 /**
- * Unregister push token from server on logout.
+ * Register for push notifications — no-op in FOSS build.
+ * Notifications are delivered via polling instead of FCM push.
+ */
+export async function registerForPushNotifications(
+  _apiClient: FindMeClient
+): Promise<void> {
+  // Request notification permission for local notifications
+  try {
+    await notifee.requestPermission();
+  } catch {
+    // Permission request is non-critical
+  }
+}
+
+/**
+ * Unregister push notifications — no-op in FOSS build.
  */
 export async function unregisterPushNotifications(
-  apiClient: FindMeClient
+  _apiClient: FindMeClient
 ): Promise<void> {
-  try {
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: projectId || undefined,
-    });
-    if (tokenData.data) {
-      await apiClient.unregisterPushToken(tokenData.data);
-    }
-  } catch {
-    // Non-critical
-  }
+  // No FCM token to unregister in FOSS build
 }
 
 /**
  * Set up notification handlers for foreground display and tap actions.
  */
 export function setupNotificationHandlers() {
-  // Show notifications when app is in foreground
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+  // Notifee handles foreground display automatically.
+  // Set up event handler for notification presses.
+  notifee.onForegroundEvent(({ type, detail }) => {
+    // Handle notification press events if needed
+  });
+
+  notifee.onBackgroundEvent(async ({ type, detail }) => {
+    // Handle background notification events if needed
   });
 }

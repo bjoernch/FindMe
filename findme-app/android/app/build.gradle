@@ -97,8 +97,8 @@ android {
         applicationId 'com.findme.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 601
-        versionName "0.6.1"
+        versionCode 700
+        versionName "0.7.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -159,6 +159,16 @@ android {
             android.packagingOptions[prop] += it
         }
     }
+}
+
+// Exclude proprietary Google libraries for F-Droid / IzzyOnDroid compatibility.
+// MLKit (barcode scanning) has been replaced with pure JS QR decoding (jsQR).
+// Firebase/FCM (push notifications) has been replaced with polling-based notifications.
+configurations.all {
+    exclude group: 'com.google.mlkit'
+    exclude group: 'com.google.android.gms'
+    exclude group: 'com.google.firebase'
+    exclude group: 'com.google.android.datatransport'
 }
 
 dependencies {

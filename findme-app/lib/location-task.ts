@@ -1,6 +1,7 @@
 // MUST be imported at the app root level for TaskManager.defineTask to work.
 import * as TaskManager from "expo-task-manager";
 import * as Battery from "expo-battery";
+import { showLocalNotification } from "./push-notifications";
 import { getStoredValue } from "./storage";
 import { enqueue, dequeueAll } from "./location-queue";
 import type { QueuedLocationUpdate } from "./location-queue";
@@ -28,6 +29,40 @@ async function sendLocationPayload(
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Poll for pending notifications and show them as local notifications.
+ * This replaces Firebase/FCM push for FOSS builds.
+ */
+async function pollAndShowNotifications(
+  serverUrl: string,
+  deviceToken: string
+) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(`${serverUrl}/api/notifications/poll`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${deviceToken}`,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return;
+
+    const json = await res.json();
+    const notifications = json?.data;
+    if (!Array.isArray(notifications) || notifications.length === 0) return;
+
+    for (const notif of notifications) {
+      await showLocalNotification(notif.title, notif.body, notif.data || undefined);
+    }
+  } catch {
+    // Notification polling is non-critical
   }
 }
 
@@ -104,4 +139,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       serverUrl,
     } as QueuedLocationUpdate);
   }
+
+  // Poll for notifications (replaces Firebase/FCM push)
+  await pollAndShowNotifications(serverUrl, deviceToken);
 });

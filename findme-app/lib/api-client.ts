@@ -536,4 +536,17 @@ export class FindMeClient {
     if (to) params.set("to", to);
     return `${this.baseUrl}/api/location/${deviceId}/export?${params.toString()}`;
   }
+
+  // ── Notifications (polling-based, replaces FCM push) ──────────
+
+  async getPendingNotifications(): Promise<ApiResponse<Array<{
+    id: string;
+    title: string;
+    body: string;
+    type: string;
+    data: Record<string, unknown> | null;
+    createdAt: string;
+  }>>> {
+    return this.request("/api/notifications/pending");
+  }
 }

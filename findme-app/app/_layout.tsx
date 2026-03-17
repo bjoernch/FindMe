@@ -7,10 +7,11 @@ import { useEffect } from "react";
 import { ThemeProvider, useTheme } from "../lib/theme-context";
 import { AuthProvider, useAuth } from "../lib/auth-context";
 import { setupNotificationHandlers } from "../lib/push-notifications";
+import { useNotificationPoller } from "../lib/notification-poller";
 import { LoadingScreen } from "../components/LoadingScreen";
 
 function RootNav() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, apiClient } = useAuth();
   const { colors, effectiveMode } = useTheme();
   const segments = useSegments();
   const router = useRouter();
@@ -18,6 +19,9 @@ function RootNav() {
   useEffect(() => {
     setupNotificationHandlers();
   }, []);
+
+  // Poll for notifications (replaces Firebase/FCM push for FOSS builds)
+  useNotificationPoller(apiClient, isAuthenticated);
 
   useEffect(() => {
     if (isLoading) return;
