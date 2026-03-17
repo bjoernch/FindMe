@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       userId: d.userId,
       name: d.name,
       platform: d.platform as DeviceWithLocation["platform"],
-      token: d.token,
+      token: "",
       isActive: d.isActive,
       isPrimary: d.isPrimary,
       lastSeen: d.lastSeen?.toISOString() ?? null,

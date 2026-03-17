@@ -4,19 +4,21 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import { Logo } from "../../components/Logo";
 import type { ThemeColors } from "../../lib/theme";
 
 export default function LoginScreen() {
-  const { login, serverUrl, setServerUrl } = useAuth();
+  const { login, passkeyLogin, serverUrl, setServerUrl } = useAuth();
   const { colors } = useTheme();
   const styles = createStyles(colors);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [server, setServer] = useState(serverUrl || "");
   const [loading, setLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showServer, setShowServer] = useState(!serverUrl);
 
@@ -29,6 +31,21 @@ export default function LoginScreen() {
     if (err) { setError(err); setLoading(false); }
   }
 
+  async function handlePasskeyLogin() {
+    if (!server.trim()) { setError("Server URL is required"); setShowServer(true); return; }
+    if (!server.trim().toLowerCase().startsWith("https://")) {
+      setError("Passkey authentication requires HTTPS. Please use an https:// server URL.");
+      setShowServer(true);
+      return;
+    }
+    setPasskeyLoading(true); setError(null);
+    await setServerUrl(server.trim());
+    const err = await passkeyLogin();
+    if (err) { setError(err); setPasskeyLoading(false); }
+  }
+
+  const isLoading = loading || passkeyLoading;
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -40,7 +57,7 @@ export default function LoginScreen() {
           {showServer ? (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Server URL</Text>
-              <TextInput style={styles.input} placeholder="http://192.168.1.100:3001" placeholderTextColor={colors.textMuted} value={server} onChangeText={setServer} autoCapitalize="none" autoCorrect={false} keyboardType="url" />
+              <TextInput style={styles.input} placeholder="https://findme.example.com" placeholderTextColor={colors.textMuted} value={server} onChangeText={setServer} autoCapitalize="none" autoCorrect={false} keyboardType="url" />
             </View>
           ) : (
             <TouchableOpacity onPress={() => setShowServer(true)} style={styles.serverBadge}>
@@ -57,10 +74,20 @@ export default function LoginScreen() {
             <TextInput style={styles.input} placeholder="Your password" placeholderTextColor={colors.textMuted} value={password} onChangeText={setPassword} secureTextEntry />
           </View>
           {error && <Text style={styles.error}>{error}</Text>}
-          <TouchableOpacity style={[styles.button, loading && styles.disabledButton]} onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity style={[styles.button, isLoading && styles.disabledButton]} onPress={handleLogin} disabled={isLoading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In</Text>}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.qrButton} onPress={() => router.push("/(auth)/scan")}>
+          <TouchableOpacity style={[styles.passkeyButton, isLoading && styles.disabledButton]} onPress={handlePasskeyLogin} disabled={isLoading}>
+            {passkeyLoading ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <View style={styles.passkeyButtonContent}>
+                <MaterialCommunityIcons name="fingerprint" size={22} color={colors.accent} />
+                <Text style={styles.passkeyButtonText}>Sign in with Passkey</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.qrButton, isLoading && styles.disabledButton]} onPress={() => router.push("/(auth)/scan")} disabled={isLoading}>
             <Text style={styles.qrButtonText}>Scan QR Code to Pair</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.replace("/(auth)/register")} style={styles.switchButton}>
@@ -90,8 +117,11 @@ function createStyles(colors: ThemeColors) {
     button: { backgroundColor: colors.accent, borderRadius: 12, padding: 16, alignItems: "center", marginTop: 8 },
     disabledButton: { opacity: 0.6 },
     buttonText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-    qrButton: { borderWidth: 1, borderColor: colors.accent, borderRadius: 12, padding: 16, alignItems: "center" },
-    qrButtonText: { color: colors.accent, fontSize: 17, fontWeight: "700" },
+    passkeyButton: { borderWidth: 1, borderColor: colors.accent, borderRadius: 12, padding: 16, alignItems: "center" },
+    passkeyButtonContent: { flexDirection: "row", alignItems: "center", gap: 8 },
+    passkeyButtonText: { color: colors.accent, fontSize: 17, fontWeight: "700" },
+    qrButton: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 16, alignItems: "center" },
+    qrButtonText: { color: colors.textSecondary, fontSize: 17, fontWeight: "700" },
     switchButton: { alignItems: "center", paddingVertical: 12 },
     switchText: { color: colors.textSecondary, fontSize: 15 },
     switchLink: { color: colors.accent, fontWeight: "600" },

@@ -1,6 +1,9 @@
 import jwt, { type SignOptions } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-jwt-secret";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required. Set it or let docker-entrypoint.sh auto-generate one.");
+}
 
 export interface JwtPayload {
   userId: string;

@@ -199,6 +199,61 @@ export class FindMeClient {
     return this.baseUrl;
   }
 
+  // ── Passkey Auth ──────────────────────────────────────────────
+
+  async getPasskeyLoginOptions(): Promise<
+    ApiResponse<{ options: any; sessionKey: string }>
+  > {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/passkey/login-options`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      return res.json();
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : "Failed to get passkey options",
+      };
+    }
+  }
+
+  async verifyPasskeyLoginMobile(
+    credential: any,
+    sessionKey: string
+  ): Promise<ApiResponse<AuthTokens>> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/auth/passkey/login-verify-mobile`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential, sessionKey }),
+        }
+      );
+      const result: ApiResponse<AuthTokens> = await res.json();
+
+      if (result.success && result.data) {
+        this.accessToken = result.data.accessToken;
+        this.refreshToken = result.data.refreshToken;
+        await setStoredValue("accessToken", result.data.accessToken);
+        await setStoredValue("refreshToken", result.data.refreshToken);
+        await setStoredValue("userId", result.data.user.id);
+        await setStoredValue("serverUrl", this.baseUrl);
+      }
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : "Passkey verification failed",
+      };
+    }
+  }
+
   // ── Devices ─────────────────────────────────────────────────
 
   async registerDevice(

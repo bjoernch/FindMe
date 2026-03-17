@@ -15,6 +15,7 @@ import {
 } from "./location-service";
 import { registerForPushNotifications, unregisterPushNotifications } from "./push-notifications";
 import { clearCache } from "./offline-cache";
+import { Passkey } from "react-native-passkey";
 import type { UserPublic } from "./types";
 
 interface AuthContextType {
@@ -29,6 +30,7 @@ interface AuthContextType {
     name: string
   ) => Promise<string | null>;
   qrAuth: (serverUrl: string, sessionToken: string) => Promise<string | null>;
+  passkeyLogin: () => Promise<string | null>;
   logout: () => Promise<void>;
   updateUser: (partial: Partial<UserPublic>) => void;
   serverUrl: string | null;
@@ -202,6 +204,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return result.error || "QR authentication failed";
   }
 
+  async function passkeyLogin(): Promise<string | null> {
+    try {
+      // Step 1: Get login options from server
+      const optionsResult = await apiClient.getPasskeyLoginOptions();
+      if (!optionsResult.success || !optionsResult.data) {
+        return optionsResult.error || "Failed to get passkey options";
+      }
+
+      const { options, sessionKey } = optionsResult.data;
+
+      // Step 2: Trigger native passkey dialog
+      const credential = await Passkey.get({
+        challenge: options.challenge,
+        rpId: options.rpId,
+        timeout: options.timeout,
+        allowCredentials: options.allowCredentials,
+        userVerification: options.userVerification,
+      });
+
+      // Step 3: Verify with server and get tokens
+      const verifyResult = await apiClient.verifyPasskeyLoginMobile(
+        credential,
+        sessionKey
+      );
+
+      if (verifyResult.success && verifyResult.data) {
+        setUser(verifyResult.data.user);
+        await autoRegisterDevice();
+
+        try {
+          await sendForegroundUpdate(apiClient);
+        } catch {
+          // Location might not be available yet
+        }
+        startBackgroundTracking().then((started) => {
+          if (started) showBatteryOptimizationBanner();
+        }).catch(console.error);
+
+        registerForPushNotifications(apiClient).catch(() => {});
+
+        return null; // Success
+      }
+
+      return verifyResult.error || "Passkey authentication failed";
+    } catch (error: any) {
+      // Handle user cancellation gracefully
+      if (error?.error === "UserCancelled" || error?.message?.includes("cancel")) {
+        return "Passkey authentication cancelled";
+      }
+      if (error?.error === "NotSupported") {
+        return "Passkeys are not supported on this device";
+      }
+      return error?.message || "Passkey authentication failed";
+    }
+  }
+
   async function logout() {
     await stopBackgroundTracking();
     unregisterPushNotifications(apiClient).catch(() => {});
@@ -232,6 +290,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         qrAuth,
+        passkeyLogin,
         logout,
         updateUser,
         serverUrl,
