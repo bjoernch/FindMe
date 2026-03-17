@@ -164,9 +164,9 @@ android {
 // Exclude proprietary Google libraries for F-Droid / IzzyOnDroid compatibility.
 // MLKit (barcode scanning) has been replaced with pure JS QR decoding (jsQR).
 // Firebase/FCM (push notifications) has been replaced with polling-based notifications.
+// Note: play-services-location is kept — expo-location requires GMS FusedLocationProvider.
 configurations.all {
     exclude group: 'com.google.mlkit'
-    exclude group: 'com.google.android.gms'
     exclude group: 'com.google.firebase'
     exclude group: 'com.google.android.datatransport'
 }
