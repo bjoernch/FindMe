@@ -83,7 +83,7 @@ EOF
 
 The FindMe companion app runs on Android (iOS planned).
 
-**Install:** Download the latest APK from [GitHub Releases](../../releases) or get it from the [IzzyOnDroid](https://apt.izzysoft.de/fdroid/index/apk/com.findme.app) F-Droid repository.
+**Install:** Download the latest APK from [GitHub Releases](../../releases). Packaging for the [IzzyOnDroid](https://apt.izzysoft.de/fdroid/) F-Droid repository has been [requested](https://codeberg.org/IzzyOnDroid/repodata/issues/67).
 
 **Connect:** Open the app, enter your server URL, and register — or scan a QR pairing code from the web dashboard's Settings page.
 
