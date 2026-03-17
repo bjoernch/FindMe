@@ -52,6 +52,9 @@ jobs:
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION (code: $VERSION_CODE)"
 
+      - name: Set SOURCE_DATE_EPOCH for reproducible builds
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
@@ -80,11 +83,20 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > /tmp/findme-release.jks
           echo "Keystore decoded successfully"
 
-      - name: Patch version in build.gradle
+      - name: Verify version in build.gradle matches tag
         working-directory: findme-app/android/app
         run: |
-          sed -i "s/versionCode .*/versionCode ${{ steps.version.outputs.version_code }}/" build.gradle
-          sed -i "s/versionName .*/versionName \"${{ steps.version.outputs.version }}\"/" build.gradle
+          GRADLE_VERSION_CODE=$(grep 'versionCode' build.gradle | head -1 | awk '{print $2}')
+          GRADLE_VERSION_NAME=$(grep 'versionName' build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          EXPECTED_CODE="${{ steps.version.outputs.version_code }}"
+          EXPECTED_NAME="${{ steps.version.outputs.version }}"
+
+          if [ "$GRADLE_VERSION_CODE" != "$EXPECTED_CODE" ] || [ "$GRADLE_VERSION_NAME" != "$EXPECTED_NAME" ]; then
+            echo "::error::Version mismatch! build.gradle has versionCode=$GRADLE_VERSION_CODE versionName=$GRADLE_VERSION_NAME but tag expects versionCode=$EXPECTED_CODE versionName=$EXPECTED_NAME"
+            echo "::error::Update build.gradle versionCode and versionName to match the tag before releasing."
+            exit 1
+          fi
+          echo "Version check passed: $EXPECTED_NAME (code: $EXPECTED_CODE)"
 
       - name: Bundle JS
         working-directory: findme-app
@@ -123,12 +135,17 @@ jobs:
             NOTES="Release $TAG"
           fi
 
-          # Create the release with the APK attached
-          gh release create "$TAG" \
-            "FindMe-v${VERSION}.apk" \
-            --title "$TAG" \
-            --notes "$NOTES" \
-            --verify-tag
+          # Upload to existing release or create a new one
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, uploading APK..."
+            gh release upload "$TAG" "FindMe-v${VERSION}.apk" --clobber
+          else
+            gh release create "$TAG" \
+              "FindMe-v${VERSION}.apk" \
+              --title "$TAG" \
+              --notes "$NOTES" \
+              --verify-tag
+          fi
 
       - name: Cleanup keystore
         if: always()

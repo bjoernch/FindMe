@@ -87,6 +87,21 @@ The FindMe companion app runs on Android (iOS planned).
 
 **Connect:** Open the app, enter your server URL, and register — or scan a QR pairing code from the web dashboard's Settings page.
 
+### Android Permissions
+
+| Permission | Purpose |
+|---|---|
+| `ACCESS_FINE_LOCATION` | High-accuracy GPS for real-time location sharing |
+| `ACCESS_COARSE_LOCATION` | Approximate location as fallback |
+| `ACCESS_BACKGROUND_LOCATION` | Continue sharing when the app is in background |
+| `CAMERA` | Scan QR codes for quick device pairing |
+| `FOREGROUND_SERVICE` | Keep location sharing active with a persistent notification |
+| `FOREGROUND_SERVICE_LOCATION` | Required for location foreground services on Android 14+ |
+| `INTERNET` | Communicate with the self-hosted server |
+| `RECEIVE_BOOT_COMPLETED` | Restart location sharing after device reboot |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Prevent OS from killing background location service |
+| `VIBRATE` | Haptic feedback for notifications |
+
 ### Building from source
 
 ```bash

@@ -1,0 +1,6 @@
+- Fix maps not loading on web dashboard (CSP headers)
+- Passkey login button greyed out until HTTPS server URL is set
+- Replace default favicon with FindMe logo
+- Version compatibility checking between app and server
+- Device removal now permanently deletes device and location history
+- Persistent location sharing notification

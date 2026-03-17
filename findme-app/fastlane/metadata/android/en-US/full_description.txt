@@ -1,0 +1,17 @@
+FindMe is a self-hosted location sharing service with an Android app and a web dashboard.
+
+Key features:
+
+- Real-time GPS location sharing with configurable intervals
+- Self-hosted Next.js server with SQLite — your data stays on your server
+- Interactive web dashboard with live map (OpenStreetMap/Leaflet)
+- Multi-device support with device management
+- Passkey (WebAuthn) and password authentication
+- Background location tracking with persistent foreground service
+- QR code pairing for quick device setup
+- Location history with per-device tracking
+- Version compatibility checking between app and server
+- Dark mode support on both app and web
+- Docker deployment with automatic HTTPS
+
+FindMe is designed for users who want full control over their location data without relying on third-party cloud services.
