@@ -105,11 +105,10 @@ android {
             keyPassword 'android'
         }
         release {
-            def ksPath = System.getenv("RELEASE_KEYSTORE_PATH")
-            storeFile file(ksPath ?: 'debug.keystore')
-            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: 'android'
-            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: 'androiddebugkey'
-            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: 'android'
+            storeFile file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "debug.keystore")
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "android"
+            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "android"
         }
     }
     buildTypes {

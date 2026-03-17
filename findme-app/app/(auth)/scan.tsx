@@ -7,6 +7,7 @@ import { router } from "expo-router";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
 import type { ThemeColors } from "../../lib/theme";
+import { Logo } from "../../components/Logo";
 
 export default function ScanScreen() {
   const { qrAuth } = useAuth();
@@ -50,7 +51,7 @@ export default function ScanScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.centerContent}>
-          <Text style={styles.logo}>FindMe</Text>
+          <Logo size={64} textColor={colors.textPrimary} />
           <Text style={styles.subtitle}>Camera access needed to scan QR codes</Text>
           {permission?.canAskAgain ? (
             <TouchableOpacity style={styles.button} onPress={requestPermission}>
