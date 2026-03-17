@@ -8,7 +8,7 @@
       "namespace": "android_app",
       "package_name": "com.findme.app",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_YOUR_SIGNING_KEY_SHA256"
+        "EC:5E:8C:F8:C1:D1:C4:39:C7:EC:74:4F:67:74:58:BA:0B:F8:60:80:7B:E6:7B:B7:07:34:2F:A5:88:87:91:C9"
       ]
     }
   }
