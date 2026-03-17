@@ -125,13 +125,21 @@ jobs:
             NOTES="Release $TAG"
           fi
 
-          # Create the release with APK + AAB attached
-          gh release create "$TAG" \
-            "FindMe-v${VERSION}.apk" \
-            "FindMe-v${VERSION}.aab" \
-            --title "$TAG" \
-            --notes "$NOTES" \
-            --verify-tag
+          # Upload to existing release or create a new one
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, uploading artifacts..."
+            gh release upload "$TAG" \
+              "FindMe-v${VERSION}.apk" \
+              "FindMe-v${VERSION}.aab" \
+              --clobber
+          else
+            gh release create "$TAG" \
+              "FindMe-v${VERSION}.apk" \
+              "FindMe-v${VERSION}.aab" \
+              --title "$TAG" \
+              --notes "$NOTES" \
+              --verify-tag
+          fi
 
       - name: Cleanup keystore
         if: always()
