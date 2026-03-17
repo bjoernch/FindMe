@@ -1,0 +1,2 @@
+- Added findme-admin CLI for server-side user management
+- Reset passwords, change emails/roles, create/delete users from the container

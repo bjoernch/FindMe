@@ -47,10 +47,17 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
 COPY --from=builder /app/node_modules/@img ./node_modules/@img
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
+COPY --from=builder /app/node_modules/nodemailer ./node_modules/nodemailer
 
 # Entrypoint script for migrations
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
+
+# Admin CLI
+COPY findme-admin.js ./
+RUN printf '#!/bin/sh\ncd /app && exec node findme-admin.js "$@"\n' > /usr/local/bin/findme-admin && \
+    chmod +x /usr/local/bin/findme-admin findme-admin.js
 
 # Create data and certs directories
 RUN mkdir -p /app/data /app/certs && chown -R nextjs:nodejs /app/data /app/certs
