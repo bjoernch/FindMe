@@ -51,6 +51,7 @@ export const peopleInviteSchema = z.object({
 export const peopleRespondSchema = z.object({
   shareId: z.string().min(1, "Share ID is required"),
   action: z.enum(["accept", "decline"]),
+  shareBack: z.boolean().optional(),
 });
 
 export const peopleSearchSchema = z.object({

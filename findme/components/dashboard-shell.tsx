@@ -37,6 +37,7 @@ const navItems = [
   { href: "/dashboard", label: "Map", icon: "\uD83D\uDDFA" },
   { href: "/dashboard/people", label: "People", icon: "\uD83D\uDC65" },
   { href: "/dashboard/devices", label: "Devices", icon: "\uD83D\uDCF1" },
+  { href: "/dashboard/history", label: "History", icon: "\uD83D\uDD52" },
   { href: "/dashboard/geofences", label: "Geofences", icon: "\uD83D\uDCCD" },
   { href: "/dashboard/share", label: "Share", icon: "\uD83D\uDD17" },
   { href: "/dashboard/settings", label: "Settings", icon: "\u2699" },

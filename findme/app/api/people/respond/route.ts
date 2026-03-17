@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       return apiError(parsed.error.issues[0].message, 400);
     }
 
-    const { shareId, action } = parsed.data;
+    const { shareId, action, shareBack } = parsed.data;
 
     const share = await prisma.peopleShare.findFirst({
       where: {
@@ -39,6 +39,27 @@ export async function POST(req: NextRequest) {
       },
       include: { fromUser: true },
     });
+
+    // If accepting and user wants to share back, create reverse share
+    if (action === "accept" && shareBack) {
+      await prisma.peopleShare.upsert({
+        where: {
+          fromUserId_toUserId: {
+            fromUserId: authResult.id,
+            toUserId: share.fromUserId,
+          },
+        },
+        create: {
+          fromUserId: authResult.id,
+          toUserId: share.fromUserId,
+          status: "ACCEPTED",
+        },
+        update: {
+          status: "ACCEPTED",
+        },
+      });
+      log.info("people.respond", `${authResult.email} accepted and shared back with ${updated.fromUser.email}`);
+    }
 
     const result: PeopleSharePublic = {
       id: updated.id,

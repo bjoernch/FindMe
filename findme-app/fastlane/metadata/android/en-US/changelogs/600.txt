@@ -1,0 +1,6 @@
+- Map-based geofence creation (click to place, drag radius)
+- Two-way share approval (Accept & Share Back / View Only)
+- Location history playback with timeline scrubber
+- Browser-based passkey authentication for mobile
+- Fixed QR code invisible in light mode
+- New top-level History page with device selector

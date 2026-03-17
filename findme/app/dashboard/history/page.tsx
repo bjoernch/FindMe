@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, use } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { MapSkeleton } from "@/components/loading-skeleton";
-import type { LocationData, ApiResponse } from "@/types/api";
+import type { LocationData, DevicePublic, ApiResponse } from "@/types/api";
 
 const HistoryMap = dynamic(
   () => import("@/components/history-map").then((mod) => mod.HistoryMap),
@@ -27,25 +26,17 @@ function haversineDistance(
 
 function computeTripStats(locations: LocationData[]) {
   if (locations.length < 2) {
-    return { totalDistance: 0, duration: 0, avgSpeed: 0, maxSpeed: 0, maxAltitude: null as number | null, minAltitude: null as number | null, elevationGain: 0 };
+    return { totalDistance: 0, duration: 0, avgSpeed: 0, maxSpeed: 0 };
   }
   const sorted = [...locations].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  let totalDistance = 0, maxSpeed = 0, maxAltitude: number | null = null, minAltitude: number | null = null, elevationGain = 0;
-
+  let totalDistance = 0, maxSpeed = 0;
   for (let i = 1; i < sorted.length; i++) {
     totalDistance += haversineDistance(sorted[i - 1].lat, sorted[i - 1].lng, sorted[i].lat, sorted[i].lng);
     if (sorted[i].speed != null && sorted[i].speed! > maxSpeed) maxSpeed = sorted[i].speed!;
-    if (sorted[i].altitude != null) {
-      if (maxAltitude === null || sorted[i].altitude! > maxAltitude) maxAltitude = sorted[i].altitude!;
-      if (minAltitude === null || sorted[i].altitude! < minAltitude) minAltitude = sorted[i].altitude!;
-      if (sorted[i - 1].altitude != null && sorted[i].altitude! > sorted[i - 1].altitude!) {
-        elevationGain += sorted[i].altitude! - sorted[i - 1].altitude!;
-      }
-    }
   }
   const duration = new Date(sorted[sorted.length - 1].timestamp).getTime() - new Date(sorted[0].timestamp).getTime();
   const avgSpeed = duration > 0 ? totalDistance / (duration / 1000) : 0;
-  return { totalDistance, duration, avgSpeed, maxSpeed, maxAltitude, minAltitude, elevationGain };
+  return { totalDistance, duration, avgSpeed, maxSpeed };
 }
 
 function formatDuration(ms: number): string {
@@ -60,29 +51,57 @@ function formatDistance(meters: number): string {
   return `${meters.toFixed(0)} m`;
 }
 
+type DatePreset = "today" | "yesterday" | "7days" | "custom";
 const SPEED_OPTIONS = [1, 2, 5, 10];
 
-export default function HistoryPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: deviceId } = use(params);
+function getPresetDates(preset: DatePreset): { from: string; to: string } {
+  const now = new Date();
+  const to = now.toISOString().slice(0, 16);
+
+  switch (preset) {
+    case "today": {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString().slice(0, 16), to };
+    }
+    case "yesterday": {
+      const yStart = new Date(now);
+      yStart.setDate(yStart.getDate() - 1);
+      yStart.setHours(0, 0, 0, 0);
+      const yEnd = new Date(now);
+      yEnd.setDate(yEnd.getDate() - 1);
+      yEnd.setHours(23, 59, 59, 999);
+      return { from: yStart.toISOString().slice(0, 16), to: yEnd.toISOString().slice(0, 16) };
+    }
+    case "7days": {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7);
+      return { from: start.toISOString().slice(0, 16), to };
+    }
+    default:
+      return { from: "", to };
+  }
+}
+
+export default function HistoryDashboardPage() {
+  const [devices, setDevices] = useState<DevicePublic[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [locations, setLocations] = useState<LocationData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().slice(0, 16);
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 16));
+  const [datePreset, setDatePreset] = useState<DatePreset>("today");
+  const [fromDate, setFromDate] = useState(() => getPresetDates("today").from);
+  const [toDate, setToDate] = useState(() => getPresetDates("today").to);
   const [selectedPoint, setSelectedPoint] = useState<LocationData | null>(null);
 
-  // Playback state
+  // Playback
   const [playing, setPlaying] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  // Sorted locations (oldest first) for playback
   const sortedForPlayback = [...locations].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
@@ -99,28 +118,20 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
   const startPlayback = useCallback(() => {
     if (sortedForPlayback.length < 2) return;
     setPlaying(true);
-    // If at end, restart
     setPlaybackIndex((prev) => (prev >= sortedForPlayback.length - 1 ? 0 : prev));
   }, [sortedForPlayback.length]);
 
-  // Playback interval
   useEffect(() => {
     if (!playing) return;
     playIntervalRef.current = setInterval(() => {
       setPlaybackIndex((prev) => {
-        if (prev >= sortedForPlayback.length - 1) {
-          stopPlayback();
-          return prev;
-        }
+        if (prev >= sortedForPlayback.length - 1) { stopPlayback(); return prev; }
         return prev + 1;
       });
     }, 500 / playbackSpeed);
-    return () => {
-      if (playIntervalRef.current) clearInterval(playIntervalRef.current);
-    };
+    return () => { if (playIntervalRef.current) clearInterval(playIntervalRef.current); };
   }, [playing, playbackSpeed, sortedForPlayback.length, stopPlayback]);
 
-  // Auto-scroll timeline during playback
   useEffect(() => {
     if (!playbackPoint || !timelineRef.current) return;
     const items = timelineRef.current.children;
@@ -129,72 +140,143 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
     }
   }, [playbackIndex, playbackPoint]);
 
-  async function fetchHistory(useDateRange = true) {
-    setLoading(true);
+  // Load devices
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/devices");
+        const data: ApiResponse<DevicePublic[]> = await res.json();
+        if (data.success && data.data) {
+          setDevices(data.data);
+          if (data.data.length > 0) setSelectedDeviceId(data.data[0].id);
+        }
+      } catch {
+        // silent
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  // Load history when device or dates change
+  useEffect(() => {
+    if (!selectedDeviceId) return;
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDeviceId]);
+
+  async function fetchHistory() {
+    if (!selectedDeviceId) return;
+    setHistoryLoading(true);
     setError(null);
     stopPlayback();
     setPlaybackIndex(0);
     try {
       const params = new URLSearchParams({ limit: "5000" });
-      if (useDateRange && fromDate) params.set("from", new Date(fromDate).toISOString());
-      if (useDateRange && toDate) params.set("to", new Date(toDate).toISOString());
-      const res = await fetch(`/api/location/${deviceId}/history?${params.toString()}`);
+      if (fromDate) params.set("from", new Date(fromDate).toISOString());
+      if (toDate) params.set("to", new Date(toDate).toISOString());
+      const res = await fetch(`/api/location/${selectedDeviceId}/history?${params.toString()}`);
       const data: ApiResponse<LocationData[]> = await res.json();
       if (data.success && data.data) {
         setLocations(data.data);
       } else {
         setError(data.error || "Failed to load history");
       }
-    } catch (err) {
-      console.error("Failed to fetch history:", err);
-      setError("Network error loading history");
+    } catch {
+      setError("Network error");
     } finally {
-      setLoading(false);
+      setHistoryLoading(false);
     }
   }
 
-  useEffect(() => {
-    fetchHistory(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceId]);
+  function handlePreset(preset: DatePreset) {
+    setDatePreset(preset);
+    if (preset !== "custom") {
+      const { from, to } = getPresetDates(preset);
+      setFromDate(from);
+      setToDate(to);
+    }
+  }
 
   function exportHistory(format: "gpx" | "csv") {
+    if (!selectedDeviceId) return;
     const params = new URLSearchParams({ format });
     if (fromDate) params.set("from", new Date(fromDate).toISOString());
     if (toDate) params.set("to", new Date(toDate).toISOString());
-    window.open(`/api/location/${deviceId}/export?${params.toString()}`, "_blank");
+    window.open(`/api/location/${selectedDeviceId}/export?${params.toString()}`, "_blank");
   }
 
   const stats = computeTripStats(locations);
 
+  if (loading) {
+    return <div className="p-6 max-w-6xl mx-auto"><div className="text-sub">Loading...</div></div>;
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <Link href="/dashboard/devices" className="text-sub hover:text-heading">&larr; Devices</Link>
-        <h1 className="text-2xl font-bold text-heading">Location History</h1>
+      <h1 className="text-2xl font-bold text-heading mb-6">Location History</h1>
+
+      {/* Controls */}
+      <div className="bg-card border border-edge rounded-xl p-4 mb-6">
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Device selector */}
+          <div>
+            <label className="block text-sm text-sub mb-1">Device</label>
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => setSelectedDeviceId(e.target.value)}
+              className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500"
+            >
+              {devices.map((d) => (
+                <option key={d.id} value={d.id}>{d.name} ({d.platform})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date presets */}
+          <div className="flex gap-1">
+            {(["today", "yesterday", "7days", "custom"] as DatePreset[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePreset(p)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  datePreset === p ? "bg-blue-600 text-white" : "bg-input text-sub hover:bg-hover border border-edge"
+                }`}
+              >
+                {p === "7days" ? "7 Days" : p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom date range */}
+          {datePreset === "custom" && (
+            <>
+              <div>
+                <label className="block text-sm text-sub mb-1">From</label>
+                <input type="datetime-local" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">To</label>
+                <input type="datetime-local" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500" />
+              </div>
+            </>
+          )}
+
+          <button onClick={fetchHistory} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+            Load
+          </button>
+
+          <div className="flex gap-2 ml-auto">
+            <button onClick={() => exportHistory("gpx")} className="bg-input hover:bg-hover text-heading px-3 py-2 rounded-lg text-sm transition-colors border border-edge">GPX</button>
+            <button onClick={() => exportHistory("csv")} className="bg-input hover:bg-hover text-heading px-3 py-2 rounded-lg text-sm transition-colors border border-edge">CSV</button>
+          </div>
+        </div>
       </div>
 
-      {/* Date range picker */}
-      <div className="bg-card border border-edge rounded-xl p-4 mb-6 flex flex-wrap items-end gap-4">
-        <div>
-          <label className="block text-sm text-sub mb-1">From</label>
-          <input type="datetime-local" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500" />
-        </div>
-        <div>
-          <label className="block text-sm text-sub mb-1">To</label>
-          <input type="datetime-local" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500" />
-        </div>
-        <button onClick={() => fetchHistory(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">Load</button>
-        <button onClick={() => fetchHistory(false)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">All Time</button>
-        <div className="flex gap-2 ml-auto">
-          <button onClick={() => exportHistory("gpx")} className="bg-input hover:bg-hover text-heading px-3 py-2 rounded-lg text-sm transition-colors border border-edge" title="Export as GPX">Export GPX</button>
-          <button onClick={() => exportHistory("csv")} className="bg-input hover:bg-hover text-heading px-3 py-2 rounded-lg text-sm transition-colors border border-edge" title="Export as CSV">Export CSV</button>
-        </div>
-      </div>
-
-      {/* Trip Summary Stats */}
+      {/* Stats */}
       {locations.length > 1 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-card border border-edge rounded-xl p-3 text-center">
             <div className="text-xs text-sub mb-1">Points</div>
             <div className="text-lg font-bold text-heading">{locations.length}</div>
@@ -215,18 +297,6 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
             <div className="text-xs text-sub mb-1">Max Speed</div>
             <div className="text-lg font-bold text-heading">{(stats.maxSpeed * 3.6).toFixed(1)} km/h</div>
           </div>
-          {stats.maxAltitude !== null && (
-            <div className="bg-card border border-edge rounded-xl p-3 text-center">
-              <div className="text-xs text-sub mb-1">Elevation</div>
-              <div className="text-lg font-bold text-heading">{stats.minAltitude?.toFixed(0)}&ndash;{stats.maxAltitude.toFixed(0)}m</div>
-            </div>
-          )}
-          {stats.elevationGain > 0 && (
-            <div className="bg-card border border-edge rounded-xl p-3 text-center">
-              <div className="text-xs text-sub mb-1">Elev. Gain</div>
-              <div className="text-lg font-bold text-heading">+{stats.elevationGain.toFixed(0)}m</div>
-            </div>
-          )}
         </div>
       )}
 
@@ -235,8 +305,8 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
       )}
 
       {/* Map */}
-      <div className="h-[400px] rounded-xl overflow-hidden border border-edge mb-4">
-        {loading ? <MapSkeleton /> : (
+      <div className="h-[450px] rounded-xl overflow-hidden border border-edge mb-4">
+        {historyLoading ? <MapSkeleton /> : (
           <HistoryMap
             locations={locations}
             selectedPoint={selectedPoint}
@@ -246,7 +316,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
         )}
       </div>
 
-      {/* Playback Controls */}
+      {/* Playback */}
       {sortedForPlayback.length > 1 && (
         <div className="bg-card border border-edge rounded-xl p-4 mb-6">
           <div className="flex items-center gap-4">
@@ -256,8 +326,6 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
             >
               {playing ? "⏸" : "▶"}
             </button>
-
-            {/* Scrubber */}
             <div className="flex-1">
               <input
                 type="range"
@@ -273,24 +341,17 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
               />
               <div className="flex justify-between text-xs text-hint mt-1">
                 <span>{sortedForPlayback.length > 0 ? new Date(sortedForPlayback[0].timestamp).toLocaleTimeString() : ""}</span>
-                <span>
-                  {playbackPoint ? new Date(playbackPoint.timestamp).toLocaleTimeString() : ""}
-                  {playbackPoint?.speed != null && ` · ${(playbackPoint.speed * 3.6).toFixed(1)} km/h`}
-                </span>
+                <span>{playbackPoint ? new Date(playbackPoint.timestamp).toLocaleTimeString() : ""}</span>
                 <span>{sortedForPlayback.length > 0 ? new Date(sortedForPlayback[sortedForPlayback.length - 1].timestamp).toLocaleTimeString() : ""}</span>
               </div>
             </div>
-
-            {/* Speed selector */}
             <div className="flex items-center gap-1">
               {SPEED_OPTIONS.map((speed) => (
                 <button
                   key={speed}
                   onClick={() => setPlaybackSpeed(speed)}
                   className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    playbackSpeed === speed
-                      ? "bg-blue-600 text-white"
-                      : "bg-input text-sub hover:bg-hover"
+                    playbackSpeed === speed ? "bg-blue-600 text-white" : "bg-input text-sub hover:bg-hover"
                   }`}
                 >
                   {speed}x

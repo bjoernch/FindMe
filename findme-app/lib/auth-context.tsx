@@ -17,7 +17,7 @@ import {
 } from "./location-service";
 import { registerForPushNotifications, unregisterPushNotifications } from "./push-notifications";
 import { clearCache } from "./offline-cache";
-import { Passkey } from "react-native-passkey";
+import * as WebBrowser from "expo-web-browser";
 import type { UserPublic } from "./types";
 
 export type VersionStatus = "match" | "app-outdated" | "server-outdated";
@@ -244,31 +244,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function passkeyLogin(): Promise<string | null> {
     try {
-      // Step 1: Get login options from server
-      const optionsResult = await apiClient.getPasskeyLoginOptions();
-      if (!optionsResult.success || !optionsResult.data) {
-        return optionsResult.error || "Failed to get passkey options";
+      const baseUrl = apiClient.getBaseUrl();
+      if (!baseUrl) return "Server URL not configured";
+
+      // Open browser-based passkey authentication
+      const authUrl = `${baseUrl}/auth/passkey-mobile?redirect=findme://auth`;
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, "findme://auth");
+
+      if (result.type === "cancel" || result.type === "dismiss") {
+        return "Passkey authentication cancelled";
       }
 
-      const { options, sessionKey } = optionsResult.data;
+      if (result.type !== "success" || !result.url) {
+        return "Passkey authentication failed";
+      }
 
-      // Step 2: Trigger native passkey dialog
-      const credential = await Passkey.get({
-        challenge: options.challenge,
-        rpId: options.rpId,
-        timeout: options.timeout,
-        allowCredentials: options.allowCredentials,
-        userVerification: options.userVerification,
-      });
+      // Extract one-time token from redirect URL
+      const url = new URL(result.url);
+      const oneTimeToken = url.searchParams.get("token");
+      if (!oneTimeToken) {
+        return "No authentication token received";
+      }
 
-      // Step 3: Verify with server and get tokens
-      const verifyResult = await apiClient.verifyPasskeyLoginMobile(
-        credential,
-        sessionKey
-      );
+      // Exchange one-time token for full auth tokens
+      const exchangeResult = await apiClient.exchangePasskeyToken(oneTimeToken);
 
-      if (verifyResult.success && verifyResult.data) {
-        setUser(verifyResult.data.user);
+      if (exchangeResult.success && exchangeResult.data) {
+        setUser(exchangeResult.data.user);
         await autoRegisterDevice();
 
         try {
@@ -281,19 +283,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }).catch(console.error);
 
         registerForPushNotifications(apiClient).catch(() => {});
+        checkVersionCompat();
 
         return null; // Success
       }
 
-      return verifyResult.error || "Passkey authentication failed";
+      return exchangeResult.error || "Passkey authentication failed";
     } catch (error: any) {
-      // Handle user cancellation gracefully
-      if (error?.error === "UserCancelled" || error?.message?.includes("cancel")) {
-        return "Passkey authentication cancelled";
-      }
-      if (error?.error === "NotSupported") {
-        return "Passkeys are not supported on this device";
-      }
       return error?.message || "Passkey authentication failed";
     }
   }

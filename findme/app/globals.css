@@ -86,3 +86,18 @@ body {
   color: var(--heading);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Geofence map labels */
+.geofence-label {
+  background: rgba(0, 0, 0, 0.7) !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.geofence-label::before {
+  display: none !important;
+}

@@ -2,7 +2,7 @@
   "expo": {
     "name": "FindMe",
     "slug": "findme-app",
-    "version": "0.5.2",
+    "version": "0.6.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,10 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "FindMe needs your location to share it with your family and friends.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "FindMe needs background location access to keep your family updated on your location.",
-        "UIBackgroundModes": ["location", "fetch"]
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
       }
     },
     "android": {
@@ -71,7 +74,8 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

@@ -237,7 +237,7 @@ export default function SettingsPage() {
         const url = await QRCode.toDataURL(sess.qrData, {
           width: 256,
           margin: 2,
-          color: { dark: "#ffffff", light: "#00000000" },
+          color: { dark: "#000000", light: "#ffffff" },
         });
         setQrImageUrl(url);
 

@@ -39,16 +39,29 @@ function FlyToPoint({ point }: { point: LocationData | null }) {
   return null;
 }
 
+function PanToPlayback({ point }: { point: LocationData | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!point) return;
+    map.panTo([point.lat, point.lng], { animate: true, duration: 0.3 });
+  }, [point, map]);
+
+  return null;
+}
+
 interface HistoryMapProps {
   locations: LocationData[];
   selectedPoint: LocationData | null;
   onSelectPoint: (point: LocationData) => void;
+  playbackPoint?: LocationData | null;
 }
 
 export function HistoryMap({
   locations,
   selectedPoint,
   onSelectPoint: _onSelectPoint,
+  playbackPoint,
 }: HistoryMapProps) {
   const { isDark } = useTheme();
 
@@ -74,7 +87,8 @@ export function HistoryMap({
     >
       <TileLayer url={tileUrl} attribution={attribution} />
       <FitPolyline locations={locations} />
-      <FlyToPoint point={selectedPoint} />
+      {!playbackPoint && <FlyToPoint point={selectedPoint} />}
+      {playbackPoint && <PanToPlayback point={playbackPoint} />}
 
       {positions.length > 1 && (
         <Polyline
@@ -121,8 +135,31 @@ export function HistoryMap({
         </CircleMarker>
       )}
 
-      {/* Selected point */}
-      {selectedPoint && (
+      {/* Playback marker (pulsing) */}
+      {playbackPoint && (
+        <CircleMarker
+          center={[playbackPoint.lat, playbackPoint.lng]}
+          radius={10}
+          pathOptions={{
+            color: "#f59e0b",
+            fillColor: "#f59e0b",
+            fillOpacity: 0.9,
+            weight: 3,
+          }}
+        >
+          <Popup>
+            <div className="text-sm">
+              <p className="font-bold">Playback</p>
+              <p>{playbackPoint.lat.toFixed(6)}, {playbackPoint.lng.toFixed(6)}</p>
+              <p>{new Date(playbackPoint.timestamp).toLocaleString()}</p>
+              {playbackPoint.speed != null && <p>{(playbackPoint.speed * 3.6).toFixed(1)} km/h</p>}
+            </div>
+          </Popup>
+        </CircleMarker>
+      )}
+
+      {/* Selected point (only when not in playback) */}
+      {selectedPoint && !playbackPoint && (
         <CircleMarker
           center={[selectedPoint.lat, selectedPoint.lng]}
           radius={6}

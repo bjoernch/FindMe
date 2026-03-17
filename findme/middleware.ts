@@ -16,6 +16,7 @@ const publicPaths = [
   "/api/auth/passkey/login-options",
   "/api/auth/passkey/login-verify",
   "/api/auth/passkey/login-verify-mobile",
+  "/api/auth/passkey/exchange",
   "/api/auth/qr-auth",
   "/api/location/update",
   "/api/version",

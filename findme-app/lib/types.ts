@@ -124,6 +124,7 @@ export interface PeopleRespondRequest {
 export interface PersonWithDevices {
   user: UserPublic;
   devices: DeviceWithLocation[];
+  sharingDirection?: "mutual" | "sharing" | "receiving";
 }
 
 // ── Share Links ──────────────────────────────────────────────────

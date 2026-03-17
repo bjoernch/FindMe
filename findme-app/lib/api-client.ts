@@ -256,6 +256,39 @@ export class FindMeClient {
     }
   }
 
+  async exchangePasskeyToken(
+    oneTimeToken: string
+  ): Promise<ApiResponse<AuthTokens>> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/auth/passkey/exchange`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ oneTimeToken }),
+        }
+      );
+      const result: ApiResponse<AuthTokens> = await res.json();
+
+      if (result.success && result.data) {
+        this.accessToken = result.data.accessToken;
+        this.refreshToken = result.data.refreshToken;
+        await setStoredValue("accessToken", result.data.accessToken);
+        await setStoredValue("refreshToken", result.data.refreshToken);
+        await setStoredValue("userId", result.data.user.id);
+        await setStoredValue("serverUrl", this.baseUrl);
+      }
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : "Token exchange failed",
+      };
+    }
+  }
+
   // ── Devices ─────────────────────────────────────────────────
 
   async registerDevice(
@@ -397,11 +430,12 @@ export class FindMeClient {
 
   async respondToInvitation(
     shareId: string,
-    action: "accept" | "decline"
+    action: "accept" | "decline",
+    shareBack?: boolean
   ): Promise<ApiResponse<PeopleSharePublic>> {
     return this.request<PeopleSharePublic>("/api/people/respond", {
       method: "POST",
-      body: JSON.stringify({ shareId, action }),
+      body: JSON.stringify({ shareId, action, shareBack }),
     });
   }
 

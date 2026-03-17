@@ -62,6 +62,20 @@ export async function GET(req: NextRequest) {
       s.fromUserId === authResult.id ? s.toUser : s.fromUser
     );
 
+    // Determine sharing direction per user
+    // "mutual" = both directions accepted, "sharing" = I share with them, "receiving" = they share with me
+    const sharingDirections = new Map<string, "mutual" | "sharing" | "receiving">();
+    for (const s of shares) {
+      const otherId = s.fromUserId === authResult.id ? s.toUserId : s.fromUserId;
+      const direction = s.fromUserId === authResult.id ? "sharing" : "receiving";
+      const existing = sharingDirections.get(otherId);
+      if (existing && existing !== direction) {
+        sharingDirections.set(otherId, "mutual");
+      } else if (!existing) {
+        sharingDirections.set(otherId, direction);
+      }
+    }
+
     // Dedupe users (in case of multiple share records)
     const seenIds = new Set<string>();
     const result: PersonWithDevices[] = [];
@@ -108,6 +122,7 @@ export async function GET(req: NextRequest) {
           createdAt: user.createdAt.toISOString(),
         },
         devices: devicesWithLocation,
+        sharingDirection: sharingDirections.get(user.id) || "mutual",
       });
     }
 

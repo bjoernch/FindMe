@@ -123,7 +123,11 @@ export default function PeopleScreen() {
                   <AvatarCircle name={person.user.name} size={48} showOnline isOnline={online} />
                   <View style={styles.contactInfo}>
                     <Text style={styles.contactName}>{person.user.name || person.user.email}</Text>
-                    <Text style={styles.contactMeta}>{online ? "Online" : formatLastSeen(lastSeen)}{deviceCount > 0 && ` · ${deviceCount} device${deviceCount !== 1 ? "s" : ""}`}</Text>
+                    <Text style={styles.contactMeta}>
+                      {online ? "Online" : formatLastSeen(lastSeen)}
+                      {deviceCount > 0 && ` · ${deviceCount} device${deviceCount !== 1 ? "s" : ""}`}
+                      {person.sharingDirection === "mutual" ? " · ↔ Mutual" : person.sharingDirection === "sharing" ? " · → Sharing" : person.sharingDirection === "receiving" ? " · ← Receiving" : ""}
+                    </Text>
                   </View>
                   {hasLocation ? (
                     <Ionicons name="navigate" size={18} color={colors.accent} />
