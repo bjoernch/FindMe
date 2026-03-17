@@ -94,6 +94,18 @@ export default function DevicesPage() {
     }
   }
 
+  async function removeDevice(id: string, name: string) {
+    if (!confirm(`Permanently remove "${name}"? This will delete the device and all its location history. This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await fetch(`/api/devices/${id}?permanent=true`, { method: "DELETE" });
+      fetchDevices();
+    } catch (err) {
+      console.error("Failed to remove device:", err);
+    }
+  }
+
   function formatLastSeen(lastSeen: string | null): string {
     if (!lastSeen) return "Never";
     return new Date(lastSeen).toLocaleString();
@@ -292,6 +304,12 @@ export default function DevicesPage() {
                       Revoke
                     </button>
                   )}
+                  <button
+                    onClick={() => removeDevice(device.id, device.name)}
+                    className="text-danger-fg hover:text-danger-fg text-sm font-semibold"
+                  >
+                    Remove
+                  </button>
                 </div>
               </div>
             );

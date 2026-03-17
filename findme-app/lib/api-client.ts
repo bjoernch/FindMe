@@ -295,8 +295,9 @@ export class FindMeClient {
     });
   }
 
-  async deleteDevice(id: string): Promise<ApiResponse<{ message: string }>> {
-    return this.request<{ message: string }>(`/api/devices/${id}`, {
+  async deleteDevice(id: string, permanent = true): Promise<ApiResponse<{ message: string }>> {
+    const query = permanent ? "?permanent=true" : "";
+    return this.request<{ message: string }>(`/api/devices/${id}${query}`, {
       method: "DELETE",
     });
   }

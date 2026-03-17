@@ -77,6 +77,7 @@ export async function DELETE(
     if (authResult instanceof Response) return authResult;
 
     const { id } = await params;
+    const permanent = req.nextUrl.searchParams.get("permanent") === "true";
 
     const device = await prisma.device.findFirst({
       where: { id, userId: authResult.id },
@@ -86,15 +87,25 @@ export async function DELETE(
       return apiError("Device not found", 404);
     }
 
-    await prisma.device.update({
-      where: { id },
-      data: { isActive: false },
-    });
-
-    // Broadcast device_revoked event via SSE so the device logs out in real-time
-    sseManager.broadcastToUser(authResult.id, "device_revoked", { deviceId: id });
-
-    return apiSuccess({ message: "Device deactivated" });
+    if (permanent) {
+      // Hard delete: remove all location data and the device record
+      await prisma.$transaction([
+        prisma.location.deleteMany({ where: { deviceId: id } }),
+        prisma.device.delete({ where: { id } }),
+      ]);
+      // Broadcast so device logs out in real-time
+      sseManager.broadcastToUser(authResult.id, "device_revoked", { deviceId: id });
+      return apiSuccess({ message: "Device permanently removed" });
+    } else {
+      // Soft delete: just deactivate
+      await prisma.device.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      // Broadcast device_revoked event via SSE so the device logs out in real-time
+      sseManager.broadcastToUser(authResult.id, "device_revoked", { deviceId: id });
+      return apiSuccess({ message: "Device deactivated" });
+    }
   } catch (error) {
     log.error("devices", "Device delete failed", error);
     return apiError("Internal server error", 500);

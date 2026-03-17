@@ -79,6 +79,7 @@ export async function startBackgroundTracking(): Promise<boolean> {
       notificationTitle: "FindMe",
       notificationBody: "Sharing your location",
       notificationColor: "#3b82f6",
+      killServiceOnDestroy: false,
     },
   });
 
