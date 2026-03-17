@@ -90,23 +90,21 @@ jobs:
         working-directory: findme-app
         run: npx expo export --platform android
 
-      - name: Build release APK and AAB
+      - name: Build release APK
         working-directory: findme-app/android
         env:
           RELEASE_KEYSTORE_PATH: /tmp/findme-release.jks
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease bundleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
-      - name: Rename artifacts
+      - name: Rename artifact
         run: |
           mv findme-app/android/app/build/outputs/apk/release/app-release.apk \
              FindMe-v${{ steps.version.outputs.version }}.apk
-          mv findme-app/android/app/build/outputs/bundle/release/app-release.aab \
-             FindMe-v${{ steps.version.outputs.version }}.aab
 
-      - name: Create GitHub Release with artifacts
+      - name: Create or update GitHub Release with APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -125,21 +123,12 @@ jobs:
             NOTES="Release $TAG"
           fi
 
-          # Upload to existing release or create a new one
-          if gh release view "$TAG" &>/dev/null; then
-            echo "Release $TAG already exists, uploading artifacts..."
-            gh release upload "$TAG" \
-              "FindMe-v${VERSION}.apk" \
-              "FindMe-v${VERSION}.aab" \
-              --clobber
-          else
-            gh release create "$TAG" \
-              "FindMe-v${VERSION}.apk" \
-              "FindMe-v${VERSION}.aab" \
-              --title "$TAG" \
-              --notes "$NOTES" \
-              --verify-tag
-          fi
+          # Create the release with the APK attached
+          gh release create "$TAG" \
+            "FindMe-v${VERSION}.apk" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+            --verify-tag
 
       - name: Cleanup keystore
         if: always()
