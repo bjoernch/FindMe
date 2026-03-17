@@ -1,0 +1,3 @@
+- Fixed SMTP relay error (553 sender not allowed)
+- APK workflow skips rebuild when only server code changes
+- Reduced APK size ~50% (dropped x86 architectures, enabled R8 minification)
