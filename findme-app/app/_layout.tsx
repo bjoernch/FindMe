@@ -22,6 +22,9 @@ function RootNav() {
   useEffect(() => {
     if (isLoading) return;
     const inAuthGroup = segments[0] === "(auth)";
+    const inAuthCallback = segments[0] === "auth"; // passkey deep link route
+    // Don't redirect while on the auth callback page - it handles its own navigation
+    if (inAuthCallback) return;
     if (!isAuthenticated && !inAuthGroup) {
       router.replace("/(auth)/login");
     } else if (isAuthenticated && inAuthGroup) {
@@ -43,6 +46,7 @@ function RootNav() {
       >
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="auth" />
       </Stack>
     </>
   );

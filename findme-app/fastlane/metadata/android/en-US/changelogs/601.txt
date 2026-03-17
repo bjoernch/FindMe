@@ -1,0 +1,2 @@
+- Fix passkey authentication redirect on Android (no more "Unmatched Route" screen)
+- Add deep link handler for reliable browser-to-app auth flow

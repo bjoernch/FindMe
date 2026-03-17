@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { Alert, Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
+import * as Linking from "expo-linking";
 import { FindMeClient } from "./api-client";
 import { compareVersions } from "./version";
 import {
@@ -130,6 +131,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Shared function to exchange a one-time passkey token for full auth
+  const pendingTokenRef = useRef(false);
+  const handlePasskeyToken = useCallback(async (oneTimeToken: string) => {
+    // Prevent double-processing
+    if (pendingTokenRef.current) return;
+    pendingTokenRef.current = true;
+    try {
+      const exchangeResult = await apiClient.exchangePasskeyToken(oneTimeToken);
+      if (exchangeResult.success && exchangeResult.data) {
+        setUser(exchangeResult.data.user);
+        // Auto-register device
+        const existingToken = await getStoredValue("deviceToken");
+        if (!existingToken) {
+          const deviceName = Device.deviceName || Device.modelName || "Unknown Device";
+          const platform = Platform.OS === "ios" ? "ios" : "android";
+          await apiClient.registerDevice({ name: deviceName, platform });
+        } else {
+          apiClient.setDeviceToken(existingToken);
+        }
+        try { await sendForegroundUpdate(apiClient); } catch {}
+        startBackgroundTracking().then((started) => {
+          if (started) showBatteryOptimizationBanner();
+        }).catch(console.error);
+        registerForPushNotifications(apiClient).catch(() => {});
+        checkVersionCompat();
+      }
+    } catch (e) {
+      console.error("Passkey token exchange failed:", e);
+    } finally {
+      pendingTokenRef.current = false;
+    }
+  }, [apiClient]);
+
+  // Listen for deep link redirects (catches findme://auth?token=... on Android)
+  useEffect(() => {
+    const handleUrl = (event: { url: string }) => {
+      if (event.url.startsWith("findme://auth")) {
+        try {
+          const url = new URL(event.url);
+          const token = url.searchParams.get("token");
+          if (token) {
+            handlePasskeyToken(token);
+          }
+        } catch {}
+      }
+    };
+
+    const sub = Linking.addEventListener("url", handleUrl);
+
+    // Check if app was opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url?.startsWith("findme://auth")) {
+        handleUrl({ url });
+      }
+    });
+
+    return () => sub.remove();
+  }, [handlePasskeyToken]);
+
   async function autoRegisterDevice() {
     const existingToken = await getStoredValue("deviceToken");
     if (existingToken) {
@@ -255,40 +315,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return "Passkey authentication cancelled";
       }
 
-      if (result.type !== "success" || !result.url) {
-        return "Passkey authentication failed";
-      }
-
-      // Extract one-time token from redirect URL
-      const url = new URL(result.url);
-      const oneTimeToken = url.searchParams.get("token");
-      if (!oneTimeToken) {
-        return "No authentication token received";
-      }
-
-      // Exchange one-time token for full auth tokens
-      const exchangeResult = await apiClient.exchangePasskeyToken(oneTimeToken);
-
-      if (exchangeResult.success && exchangeResult.data) {
-        setUser(exchangeResult.data.user);
-        await autoRegisterDevice();
-
-        try {
-          await sendForegroundUpdate(apiClient);
-        } catch {
-          // Location might not be available yet
+      // If openAuthSessionAsync caught the redirect, handle it directly
+      if (result.type === "success" && result.url) {
+        const url = new URL(result.url);
+        const oneTimeToken = url.searchParams.get("token");
+        if (oneTimeToken) {
+          await handlePasskeyToken(oneTimeToken);
+          return null;
         }
-        startBackgroundTracking().then((started) => {
-          if (started) showBatteryOptimizationBanner();
-        }).catch(console.error);
-
-        registerForPushNotifications(apiClient).catch(() => {});
-        checkVersionCompat();
-
-        return null; // Success
       }
 
-      return exchangeResult.error || "Passkey authentication failed";
+      // On some Android devices, the redirect is handled by the deep link listener
+      // instead of openAuthSessionAsync. Wait briefly for the URL listener to process it.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // If the URL listener already authenticated us, we're done
+      if (user) return null;
+
+      return "Passkey authentication failed";
     } catch (error: any) {
       return error?.message || "Passkey authentication failed";
     }
