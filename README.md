@@ -89,6 +89,8 @@ The FindMe companion app runs on Android (iOS planned).
 
 ### Android Permissions
 
+The app requests only the permissions it needs. Each one is explained below.
+
 | Permission | Purpose |
 |---|---|
 | `ACCESS_FINE_LOCATION` | High-accuracy GPS for real-time location sharing |
@@ -101,6 +103,40 @@ The FindMe companion app runs on Android (iOS planned).
 | `RECEIVE_BOOT_COMPLETED` | Restart location sharing after device reboot |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Prevent OS from killing background location service |
 | `VIBRATE` | Haptic feedback for notifications |
+
+**Location** (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`):
+FindMe's core function is sharing your GPS position with your self-hosted server. Fine location provides accurate coordinates; coarse location serves as a fallback when GPS is unavailable. Background location allows the app to keep sharing your position when it is not in the foreground — essential for continuous family tracking. The app runs an Android foreground service with a persistent notification ("Sharing your location") so the user is always aware that location access is active.
+
+**Camera** (`CAMERA`):
+Used exclusively for scanning QR codes during device pairing. The web dashboard displays a QR code that the app scans to link a device to a user account. The camera is not used for any other purpose.
+
+**Foreground service** (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`):
+Android requires these permissions to run a foreground service that keeps location sharing active. The service displays a persistent, non-dismissable notification so the user always knows the app is running. `FOREGROUND_SERVICE_LOCATION` is mandatory starting with Android 14 for services that access location.
+
+**Internet** (`INTERNET`):
+Required to communicate with the user's self-hosted FindMe server — sending location updates, fetching device lists, and authentication.
+
+**Boot completed** (`RECEIVE_BOOT_COMPLETED`):
+Allows the app to automatically restart location sharing after the device reboots, so the user does not have to manually re-open the app.
+
+**Battery optimizations** (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`):
+Android's battery optimization can kill background services. This permission allows the app to request (via a system dialog) that the user exempts FindMe from battery optimization, ensuring reliable background location sharing.
+
+**Vibrate** (`VIBRATE`):
+Used for haptic feedback on push notifications such as geofence alerts.
+
+### Network Security
+
+FindMe is a self-hosted app — users run their own server, which may be on a local network (e.g. `192.168.x.x`, `10.x.x.x`) where HTTPS certificates are not available. To handle this safely, the app uses a [Network Security Configuration](findme-app/android/app/src/main/res/xml/network_security_config.xml) that:
+
+- **Requires HTTPS** for all connections by default
+- **Allows cleartext HTTP only** for private/local network ranges (RFC 1918: `10.x.x.x`, `172.16.x.x`, `192.168.x.x`) and `localhost`
+
+The app never sends data in cleartext over the public internet. The blanket `android:usesCleartextTraffic` flag is **not** used.
+
+### Tracking & Analytics
+
+FindMe contains **no advertising, analytics, or tracking services**. No data is sent to third parties. All communication is exclusively between the app and the user's own self-hosted server.
 
 ### Building from source
 
