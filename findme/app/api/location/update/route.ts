@@ -29,6 +29,15 @@ export async function POST(req: NextRequest) {
     const { lat, lng, accuracy, altitude, speed, heading, batteryLevel } =
       parsed.data;
 
+    // Store app version from header (fire-and-forget)
+    const appVersion = req.headers.get("x-app-version");
+    if (appVersion && appVersion !== "unknown" && appVersion !== deviceResult.appVersion) {
+      prisma.device.update({
+        where: { id: deviceResult.id },
+        data: { appVersion },
+      }).catch(() => {});
+    }
+
     const [location] = await Promise.all([
       prisma.location.create({
         data: {

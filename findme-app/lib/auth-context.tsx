@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
+import Constants from "expo-constants";
 import * as Device from "expo-device";
 import { FindMeClient } from "./api-client";
+import { compareVersions } from "./version";
 import {
   getStoredValue,
   setStoredValue,
@@ -17,6 +19,8 @@ import { registerForPushNotifications, unregisterPushNotifications } from "./pus
 import { clearCache } from "./offline-cache";
 import { Passkey } from "react-native-passkey";
 import type { UserPublic } from "./types";
+
+export type VersionStatus = "match" | "app-outdated" | "server-outdated";
 
 interface AuthContextType {
   user: UserPublic | null;
@@ -35,6 +39,8 @@ interface AuthContextType {
   updateUser: (partial: Partial<UserPublic>) => void;
   serverUrl: string | null;
   setServerUrl: (url: string) => Promise<void>;
+  serverVersion: string | null;
+  versionStatus: VersionStatus;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -50,11 +56,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [serverUrl, setServerUrlState] = useState<string | null>(null);
   const [apiClient] = useState(() => new FindMeClient(""));
+  const [serverVersion, setServerVersion] = useState<string | null>(null);
+  const [versionStatus, setVersionStatus] = useState<VersionStatus>("match");
 
   // Initialize: check stored tokens on app launch
   useEffect(() => {
     initialize();
   }, []);
+
+  async function checkVersionCompat() {
+    try {
+      const result = await apiClient.getServerVersion();
+      if (result.success && result.data) {
+        const srvVer = result.data.version;
+        setServerVersion(srvVer);
+        const appVer = Constants.expoConfig?.version || "0.0.0";
+        const status = compareVersions(appVer, srvVer);
+        setVersionStatus(status);
+
+        if (status === "app-outdated") {
+          Alert.alert(
+            "Update Available",
+            `Your app (v${appVer}) is older than the server (v${srvVer}). Please update the app for full compatibility.`
+          );
+        } else if (status === "server-outdated") {
+          Alert.alert(
+            "Server Update Needed",
+            `Your app (v${appVer}) is newer than the server (v${srvVer}). Please update the FindMe server.`
+          );
+        }
+      }
+    } catch {
+      // Version check is non-critical
+    }
+  }
 
   async function initialize() {
     try {
@@ -81,6 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(meResult.data);
           // Re-register push token (handles token refresh)
           registerForPushNotifications(apiClient).catch(() => {});
+          // Check version compatibility
+          checkVersionCompat();
         } else {
           // Tokens invalid, clear everything
           await clearAll();
@@ -134,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }).catch(console.error);
 
       registerForPushNotifications(apiClient).catch(() => {});
+      checkVersionCompat();
 
       return null; // No error
     }
@@ -295,6 +333,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateUser,
         serverUrl,
         setServerUrl: handleSetServerUrl,
+        serverVersion,
+        versionStatus,
       }}
     >
       {children}

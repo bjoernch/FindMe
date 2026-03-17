@@ -61,6 +61,7 @@ export interface DevicePublic {
   token: string;
   isActive: boolean;
   isPrimary: boolean;
+  appVersion?: string | null;
   lastSeen: string | null;
   createdAt: string;
 }

@@ -59,6 +59,7 @@ export async function PATCH(
       token: updated!.token,
       isActive: updated!.isActive,
       isPrimary: updated!.isPrimary,
+      appVersion: updated!.appVersion ?? null,
       lastSeen: updated!.lastSeen?.toISOString() ?? null,
       createdAt: updated!.createdAt.toISOString(),
     });

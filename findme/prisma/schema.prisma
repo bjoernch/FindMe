@@ -37,8 +37,9 @@ model Device {
   platform  String
   token     String    @unique
   isActive  Boolean   @default(true)
-  isPrimary Boolean   @default(false)
-  lastSeen  DateTime?
+  isPrimary  Boolean   @default(false)
+  appVersion String?
+  lastSeen   DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 

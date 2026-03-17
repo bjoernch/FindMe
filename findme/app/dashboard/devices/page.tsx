@@ -267,8 +267,9 @@ export default function DevicesPage() {
                     )}
                     <p className="text-hint text-xs">
                       {device.platform} &middot;{" "}
-                      {device.isActive ? "Active" : "Revoked"} &middot; Last
-                      seen: {formatLastSeen(device.lastSeen)}
+                      {device.isActive ? "Active" : "Revoked"}
+                      {device.appVersion ? ` · v${device.appVersion}` : ""}
+                      {" "}&middot; Last seen: {formatLastSeen(device.lastSeen)}
                     </p>
                   </div>
                 </div>

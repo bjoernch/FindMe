@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { getStoredValue, setStoredValue } from "./storage";
 import type {
   ApiResponse,
@@ -39,6 +40,7 @@ export class FindMeClient {
   ): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
+      "X-App-Version": Constants.expoConfig?.version || "unknown",
       ...(options.headers as Record<string, string>),
     };
 
@@ -340,6 +342,7 @@ export class FindMeClient {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.deviceToken}`,
+          "X-App-Version": Constants.expoConfig?.version || "unknown",
         },
         body: JSON.stringify(data),
       });
@@ -478,6 +481,17 @@ export class FindMeClient {
       method: "DELETE",
       body: JSON.stringify({ token }),
     });
+  }
+
+  // ── Version ─────────────────────────────────────────────────────
+
+  async getServerVersion(): Promise<ApiResponse<{ version: string; minAppVersion: string }>> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/version`);
+      return res.json();
+    } catch {
+      return { success: false, data: null, error: "Failed to fetch server version" };
+    }
   }
 
   // ── Export ─────────────────────────────────────────────────────

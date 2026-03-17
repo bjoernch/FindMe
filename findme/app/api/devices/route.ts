@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
         token: d.token,
         isActive: d.isActive,
         isPrimary: d.isPrimary,
+        appVersion: d.appVersion ?? null,
         lastSeen: d.lastSeen?.toISOString() ?? null,
         createdAt: d.createdAt.toISOString(),
       }))

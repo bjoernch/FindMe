@@ -4,6 +4,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -32,7 +33,8 @@ function platformIcon(platform: string): "phone-portrait" | "phone-landscape-out
 }
 
 export default function SettingsScreen() {
-  const { user, logout, serverUrl, setServerUrl, apiClient, updateUser } = useAuth();
+  const { user, logout, serverUrl, setServerUrl, apiClient, updateUser, serverVersion, versionStatus } = useAuth();
+  const appVersion = Constants.expoConfig?.version || "unknown";
   const { colors, mode, setTheme } = useTheme();
   const styles = createStyles(colors);
   const [trackingEnabled, setTrackingEnabled] = useState(false);
@@ -409,7 +411,7 @@ export default function SettingsScreen() {
                           </View>
                         )}
                       </View>
-                      <Text style={styles.deviceMeta}>Last seen: {formatLastSeen(device.lastSeen)}</Text>
+                      <Text style={styles.deviceMeta}>Last seen: {formatLastSeen(device.lastSeen)}{device.appVersion ? ` · v${device.appVersion}` : ""}</Text>
                     </View>
                   </View>
                   {!isEditingThis && (
@@ -629,6 +631,31 @@ export default function SettingsScreen() {
                   <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                 </View>
               </TouchableOpacity>
+            )}
+          </View>
+          <View style={[styles.card, { marginTop: 8 }]}>
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>App Version</Text>
+              <Text style={styles.settingValue}>{appVersion}</Text>
+            </View>
+            <View style={[styles.settingRow, { marginTop: 10 }]}>
+              <Text style={styles.settingLabel}>Server Version</Text>
+              <View style={styles.settingRight}>
+                <Text style={styles.settingValue}>{serverVersion || "—"}</Text>
+                {versionStatus !== "match" && (
+                  <Ionicons name="warning" size={16} color="#f59e0b" />
+                )}
+              </View>
+            </View>
+            {versionStatus === "app-outdated" && (
+              <Text style={[styles.settingHint, { color: "#f59e0b" }]}>
+                App is outdated — please update to match the server
+              </Text>
+            )}
+            {versionStatus === "server-outdated" && (
+              <Text style={[styles.settingHint, { color: "#f59e0b" }]}>
+                Server is running an older version than this app
+              </Text>
             )}
           </View>
         </View>
