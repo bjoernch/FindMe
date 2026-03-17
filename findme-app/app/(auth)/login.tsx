@@ -45,6 +45,8 @@ export default function LoginScreen() {
   }
 
   const isLoading = loading || passkeyLoading;
+  const passkeyReady = server.trim().toLowerCase().startsWith("https://");
+  const passkeyDisabled = isLoading || !passkeyReady;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
@@ -77,16 +79,19 @@ export default function LoginScreen() {
           <TouchableOpacity style={[styles.button, isLoading && styles.disabledButton]} onPress={handleLogin} disabled={isLoading}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In</Text>}
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.passkeyButton, isLoading && styles.disabledButton]} onPress={handlePasskeyLogin} disabled={isLoading}>
+          <TouchableOpacity style={[styles.passkeyButton, passkeyDisabled && styles.disabledButton]} onPress={handlePasskeyLogin} disabled={passkeyDisabled}>
             {passkeyLoading ? (
               <ActivityIndicator color={colors.accent} />
             ) : (
               <View style={styles.passkeyButtonContent}>
-                <MaterialCommunityIcons name="fingerprint" size={22} color={colors.accent} />
-                <Text style={styles.passkeyButtonText}>Sign in with Passkey</Text>
+                <MaterialCommunityIcons name="fingerprint" size={22} color={passkeyDisabled ? colors.textMuted : colors.accent} />
+                <Text style={[styles.passkeyButtonText, passkeyDisabled && { color: colors.textMuted }]}>Sign in with Passkey</Text>
               </View>
             )}
           </TouchableOpacity>
+          {!passkeyReady && (
+            <Text style={styles.passkeyHint}>Passkey requires an HTTPS server URL</Text>
+          )}
           <TouchableOpacity style={[styles.qrButton, isLoading && styles.disabledButton]} onPress={() => router.push("/(auth)/scan")} disabled={isLoading}>
             <Text style={styles.qrButtonText}>Scan QR Code to Pair</Text>
           </TouchableOpacity>
@@ -120,6 +125,7 @@ function createStyles(colors: ThemeColors) {
     passkeyButton: { borderWidth: 1, borderColor: colors.accent, borderRadius: 12, padding: 16, alignItems: "center" },
     passkeyButtonContent: { flexDirection: "row", alignItems: "center", gap: 8 },
     passkeyButtonText: { color: colors.accent, fontSize: 17, fontWeight: "700" },
+    passkeyHint: { fontSize: 12, color: colors.textMuted, textAlign: "center", marginTop: -8 },
     qrButton: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 16, alignItems: "center" },
     qrButtonText: { color: colors.textSecondary, fontSize: 17, fontWeight: "700" },
     switchButton: { alignItems: "center", paddingVertical: 12 },
