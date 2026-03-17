@@ -29,6 +29,9 @@ certs/
 # Build artifacts
 *.apk
 
+# Dependencies
+node_modules/
+
 # Misc
 *.pdf
 plan.md

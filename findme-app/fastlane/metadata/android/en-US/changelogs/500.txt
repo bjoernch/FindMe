@@ -1,0 +1,7 @@
+- Fix mobile passkey authentication
+- Fix map avatars showing platform letter instead of user initials
+- Fix invite modal flickering
+- Add admin user creation for invite-only mode
+- Add option to disable public registration
+- Fix web map tile loading (CSP update)
+- IzzyOnDroid compliance improvements
