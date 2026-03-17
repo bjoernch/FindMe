@@ -39,7 +39,8 @@ function buildMapHtml(
   devices: (DeviceWithLocation & { ownerName?: string | null; ownerAvatar?: string | null })[] | null,
   people: PersonWithDevices[] | null,
   tileLayerId: MapTileLayerId,
-  serverUrl?: string | null
+  serverUrl?: string | null,
+  currentUserName?: string | null,
 ) {
   const tile = MAP_TILE_LAYERS[tileLayerId];
   const bgColor = TILE_BG_COLORS[tileLayerId];
@@ -70,7 +71,7 @@ function buildMapHtml(
       lng: d.latestLocation.lng,
       label: d.isPrimary ? ownerName : d.name,
       color: d.isPrimary ? getAvatarColor(ownerName) : "#3b82f6",
-      initials: d.isPrimary ? getInitials(ownerName) : (d.platform === "android" ? "A" : d.platform === "ios" ? "I" : "W"),
+      initials: d.isPrimary ? getInitials(ownerName) : getInitials(currentUserName || ownerName),
       online,
       isDevice: true,
       isPrimary: d.isPrimary,
@@ -241,7 +242,7 @@ window.updateMarker = function(data) {
 }
 
 export default function MapScreen() {
-  const { apiClient, serverUrl, isLoading: authLoading, logout } = useAuth();
+  const { apiClient, serverUrl, isLoading: authLoading, logout, user } = useAuth();
   const { colors, effectiveMode } = useTheme();
   const { isConnected } = useNetwork();
   const { focusLat, focusLng } = useLocalSearchParams<{ focusLat?: string; focusLng?: string }>();
@@ -371,7 +372,8 @@ export default function MapScreen() {
     );
   }
 
-  const html = buildMapHtml(devices, people, tileLayerId, serverUrl);
+  const ownerName = user?.name || user?.email || null;
+  const html = buildMapHtml(devices, people, tileLayerId, serverUrl, ownerName);
 
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>

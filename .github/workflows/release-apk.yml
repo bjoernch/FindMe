@@ -116,7 +116,7 @@ jobs:
           mv findme-app/android/app/build/outputs/apk/release/app-release.apk \
              FindMe-v${{ steps.version.outputs.version }}.apk
 
-      - name: Create or update GitHub Release with APK
+      - name: Create GitHub Release with APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -135,17 +135,18 @@ jobs:
             NOTES="Release $TAG"
           fi
 
-          # Upload to existing release or create a new one
+          # Remove any existing draft/empty release so the final one always includes the APK
           if gh release view "$TAG" &>/dev/null; then
-            echo "Release $TAG already exists, uploading APK..."
-            gh release upload "$TAG" "FindMe-v${VERSION}.apk" --clobber
-          else
-            gh release create "$TAG" \
-              "FindMe-v${VERSION}.apk" \
-              --title "$TAG" \
-              --notes "$NOTES" \
-              --verify-tag
+            echo "Removing existing release $TAG to recreate with APK attached..."
+            gh release delete "$TAG" --yes --cleanup-tag=false
           fi
+
+          # Create release with APK — release only appears once APK is ready
+          gh release create "$TAG" \
+            "FindMe-v${VERSION}.apk" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+            --verify-tag
 
       - name: Cleanup keystore
         if: always()

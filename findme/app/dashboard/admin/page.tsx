@@ -57,6 +57,11 @@ export default function AdminPage() {
   const [smtpSaving, setSmtpSaving] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
 
+  // Create user form state
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState({ email: "", name: "", password: "", role: "MEMBER" });
+  const [creating, setCreating] = useState(false);
+
   const currentUserId = (session?.user as { id?: string } | undefined)?.id;
 
   useEffect(() => {
@@ -152,6 +157,43 @@ export default function AdminPage() {
     } catch {
       setActionMessage("Failed to reset password.");
     }
+  }
+
+  async function createUser() {
+    if (!newUser.email || !newUser.password) {
+      setActionMessage("Email and password are required.");
+      setTimeout(() => setActionMessage(null), 3000);
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUser),
+      });
+      const data: ApiResponse<{ temporaryPassword: string; email: string }> = await res.json();
+      if (data.success && data.data) {
+        setTempPassword(data.data.temporaryPassword);
+        setActionMessage(`User "${newUser.email}" created. Share the password securely.`);
+        setNewUser({ email: "", name: "", password: "", role: "MEMBER" });
+        setShowCreateUser(false);
+        loadData();
+      } else {
+        setActionMessage(`Error: ${data.error}`);
+      }
+    } catch {
+      setActionMessage("Failed to create user.");
+    }
+    setCreating(false);
+    setTimeout(() => setActionMessage(null), 5000);
+  }
+
+  function generatePassword() {
+    const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    let pw = "";
+    for (let i = 0; i < 16; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    setNewUser({ ...newUser, password: pw });
   }
 
   async function toggleRole(userId: string, currentRole: string) {
@@ -281,6 +323,48 @@ export default function AdminPage() {
 
       {/* Users Table */}
       {tab === "users" && (
+        <div className="space-y-4">
+        {/* Create User Form */}
+        {showCreateUser ? (
+          <div className="bg-card border border-edge rounded-xl p-6">
+            <h3 className="text-base font-semibold text-heading mb-4">Create User</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-sub mb-1">Email *</label>
+                <input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} placeholder="user@example.com" className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">Name</label>
+                <input type="text" value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} placeholder="Full name" className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">Password *</label>
+                <div className="flex gap-2">
+                  <input type="text" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} placeholder="Password" className="flex-1 bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading font-mono focus:outline-none focus:border-blue-500" />
+                  <button onClick={generatePassword} className="bg-input hover:bg-edge border border-edge-bold px-3 py-2 rounded-lg text-xs text-sub font-medium whitespace-nowrap">Generate</button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-sub mb-1">Role</label>
+                <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} className="w-full bg-input border border-edge-bold rounded-lg px-3 py-2 text-sm text-heading focus:outline-none focus:border-blue-500">
+                  <option value="MEMBER">Member</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <button onClick={createUser} disabled={creating} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">{creating ? "Creating..." : "Create User"}</button>
+              <button onClick={() => { setShowCreateUser(false); setNewUser({ email: "", name: "", password: "", role: "MEMBER" }); }} className="text-sm text-sub hover:text-heading">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <button onClick={() => setShowCreateUser(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Create User
+            </button>
+          </div>
+        )}
         <div className="bg-card border border-edge rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -381,6 +465,7 @@ export default function AdminPage() {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

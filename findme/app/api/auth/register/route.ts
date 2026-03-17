@@ -10,6 +10,18 @@ import type { AuthTokens, UserPublic } from "@/types/api";
 
 export async function POST(req: NextRequest) {
   try {
+    // Check if registration is disabled (admin-only invite mode)
+    if (process.env.REGISTRATION_DISABLED === "true") {
+      // Still allow the very first user (admin) to register
+      const userCount = await prisma.user.count();
+      if (userCount > 0) {
+        return apiError(
+          "Registration is disabled. Please ask an administrator for an invite.",
+          403
+        );
+      }
+    }
+
     // Rate limit: 5 registrations per hour per IP
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";

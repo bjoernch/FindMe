@@ -19,5 +19,6 @@ export async function GET() {
   return apiSuccess({
     version,
     minAppVersion: version,
+    registrationDisabled: process.env.REGISTRATION_DISABLED === "true",
   });
 }

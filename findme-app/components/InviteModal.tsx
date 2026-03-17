@@ -23,20 +23,29 @@ export function InviteModal({ visible, onClose, onInvited }: InviteModalProps) {
   const [success, setSuccess] = useState(false);
 
   async function handleInvite() {
-    if (!email.trim()) return;
+    if (!email.trim() || loading) return;
     setLoading(true); setError(null);
-    const result = await apiClient.invite(email.trim());
-    if (result.success) {
-      setSuccess(true); setEmail("");
-      setTimeout(() => { setSuccess(false); onInvited(); onClose(); }, 1500);
-    } else { setError(result.error || "Failed to send invitation"); }
+    try {
+      const result = await apiClient.invite(email.trim());
+      if (result.success) {
+        setSuccess(true); setEmail("");
+        setTimeout(() => {
+          setSuccess(false);
+          onClose();
+          // Delay refetch until after modal fully closes to prevent flickering
+          setTimeout(() => onInvited(), 300);
+        }, 1200);
+      } else { setError(result.error || "Failed to send invitation"); }
+    } catch {
+      setError("Failed to send invitation");
+    }
     setLoading(false);
   }
 
   function handleClose() { setEmail(""); setError(null); setSuccess(false); onClose(); }
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={handleClose}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleClose}>
       <Pressable style={styles.backdrop} onPress={handleClose} />
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.overlay} pointerEvents="box-none">
         <View style={styles.container}>
