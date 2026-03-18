@@ -1,0 +1,4 @@
+- Fix background location tracking and foreground notification not working after FOSS migration
+- Add expo prebuild step to CI for proper native code generation
+- Remove stale Firebase/expo-notifications references from AndroidManifest
+- Add Expo config plugin for signing, network security, and build optimizations

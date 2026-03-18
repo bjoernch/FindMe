@@ -152,6 +152,11 @@ jobs:
           fi
           echo "Version check passed: $EXPECTED_NAME (code: $EXPECTED_CODE)"
 
+      - name: Regenerate native project
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
+        working-directory: findme-app
+        run: npx expo prebuild --clean --platform android
+
       - name: Bundle JS
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
