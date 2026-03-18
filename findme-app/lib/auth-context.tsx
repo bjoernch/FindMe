@@ -115,10 +115,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const meResult = await apiClient.getMe();
         if (meResult.success && meResult.data) {
           setUser(meResult.data);
-          // Re-register push token (handles token refresh)
-          registerForPushNotifications(apiClient).catch(() => {});
-          // Check version compatibility
-          checkVersionCompat();
+          // Restart location tracking and notifications on app reopen
+          setupLocationAndNotifications();
         } else {
           // Tokens invalid, clear everything
           await clearAll();
@@ -141,21 +139,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const exchangeResult = await apiClient.exchangePasskeyToken(oneTimeToken);
       if (exchangeResult.success && exchangeResult.data) {
         setUser(exchangeResult.data.user);
-        // Auto-register device
-        const existingToken = await getStoredValue("deviceToken");
-        if (!existingToken) {
-          const deviceName = Device.deviceName || Device.modelName || "Unknown Device";
-          const platform = Platform.OS === "ios" ? "ios" : "android";
-          await apiClient.registerDevice({ name: deviceName, platform });
-        } else {
-          apiClient.setDeviceToken(existingToken);
-        }
-        try { await sendForegroundUpdate(apiClient); } catch {}
-        startBackgroundTracking().then((started) => {
-          if (started) showBatteryOptimizationBanner();
-        }).catch(console.error);
-        registerForPushNotifications(apiClient).catch(() => {});
-        checkVersionCompat();
+        await autoRegisterDevice();
+        setupLocationAndNotifications();
       }
     } catch (e) {
       console.error("Passkey token exchange failed:", e);
@@ -191,23 +176,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [handlePasskeyToken]);
 
   async function autoRegisterDevice() {
-    const existingToken = await getStoredValue("deviceToken");
-    if (existingToken) {
-      apiClient.setDeviceToken(existingToken);
-      return;
-    }
+    try {
+      const existingToken = await getStoredValue("deviceToken");
+      if (existingToken) {
+        apiClient.setDeviceToken(existingToken);
+        return;
+      }
 
-    const deviceName =
-      Device.deviceName || Device.modelName || "Unknown Device";
-    const platform = Platform.OS === "ios" ? "ios" : "android";
-    const result = await apiClient.registerDevice({
-      name: deviceName,
-      platform,
-    });
+      const deviceName =
+        Device.deviceName || Device.modelName || "Unknown Device";
+      const platform = Platform.OS === "ios" ? "ios" : "android";
+      const result = await apiClient.registerDevice({
+        name: deviceName,
+        platform,
+      });
 
-    if (result.success && result.data) {
-      // Token is stored by the client automatically
+      if (result.success && result.data) {
+        // Token is stored by the client automatically
+      }
+    } catch (e) {
+      console.warn("autoRegisterDevice failed:", e);
     }
+  }
+
+  /**
+   * Start location tracking + notifications. Called after every successful auth
+   * AND on app restart when session is restored.
+   */
+  async function setupLocationAndNotifications() {
+    try {
+      // Request notification permission first (needed on Android 13+ for foreground service)
+      await registerForPushNotifications(apiClient);
+    } catch {}
+
+    // Start background tracking (requests location permissions, shows foreground notification)
+    startBackgroundTracking()
+      .then((started) => {
+        if (started) showBatteryOptimizationBanner();
+      })
+      .catch((e) => console.warn("startBackgroundTracking failed:", e));
+
+    // Send an initial location update (fire and forget, don't block)
+    sendForegroundUpdate(apiClient).catch(() => {});
+
+    // Check version compatibility
+    checkVersionCompat();
   }
 
   async function login(
@@ -219,21 +232,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (result.success && result.data) {
       setUser(result.data.user);
       await autoRegisterDevice();
-
-      // Send initial location and start background tracking
-      try {
-        await sendForegroundUpdate(apiClient);
-      } catch {
-        // Location might not be available yet
-      }
-      startBackgroundTracking().then((started) => {
-        if (started) showBatteryOptimizationBanner();
-      }).catch(console.error);
-
-      registerForPushNotifications(apiClient).catch(() => {});
-      checkVersionCompat();
-
-      return null; // No error
+      setupLocationAndNotifications();
+      return null;
     }
 
     return result.error || "Login failed";
@@ -249,18 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (result.success && result.data) {
       setUser(result.data.user);
       await autoRegisterDevice();
-
-      try {
-        await sendForegroundUpdate(apiClient);
-      } catch {
-        // Location might not be available yet
-      }
-      startBackgroundTracking().then((started) => {
-        if (started) showBatteryOptimizationBanner();
-      }).catch(console.error);
-
-      registerForPushNotifications(apiClient).catch(() => {});
-
+      setupLocationAndNotifications();
       return null;
     }
 
@@ -284,18 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (result.success && result.data) {
       setUser(result.data.user);
       setServerUrlState(qrServerUrl.replace(/\/$/, ""));
-
-      try {
-        await sendForegroundUpdate(apiClient);
-      } catch {
-        // Location might not be available yet
-      }
-      startBackgroundTracking().then((started) => {
-        if (started) showBatteryOptimizationBanner();
-      }).catch(console.error);
-
-      registerForPushNotifications(apiClient).catch(() => {});
-
+      setupLocationAndNotifications();
       return null;
     }
 
