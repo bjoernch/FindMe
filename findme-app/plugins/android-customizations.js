@@ -178,7 +178,7 @@ function withGradleProps(config) {
       "android.enableMinifyInReleaseBuilds": "true",
       "android.enableShrinkResourcesInReleaseBuilds": "true",
       "android.enablePngCrunchInReleaseBuilds": "true",
-      reactNativeArchitectures: "armeabi-v7a,arm64-v8a",
+      reactNativeArchitectures: "arm64-v8a",
     };
 
     for (const [key, value] of Object.entries(overrides)) {
