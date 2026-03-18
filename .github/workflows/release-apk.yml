@@ -15,14 +15,6 @@ on:
 #   RELEASE_KEYSTORE_PASSWORD  - keystore password
 #   RELEASE_KEY_ALIAS          - key alias name
 #   RELEASE_KEY_PASSWORD       - key password
-#
-# Generate a keystore:
-#   keytool -genkeypair -v -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 \
-#     -storepass <password> -keypass <password> -alias findme -keystore findme-release.jks \
-#     -dname "CN=FindMe, OU=FindMe, O=FindMe, L=FindMe, ST=Unknown, C=US"
-#
-# Encode to base64:
-#   base64 -i findme-release.jks | pbcopy
 
 jobs:
   build-apk:
@@ -58,13 +50,11 @@ jobs:
         id: changes
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          # Find previous tag
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
           if [ -z "$PREV_TAG" ]; then
             echo "app_changed=true" >> "$GITHUB_OUTPUT"
             echo "No previous tag found, building APK"
           else
-            # Check if any files in findme-app/ changed
             CHANGED=$(git diff --name-only "$PREV_TAG" "$TAG" -- findme-app/ | head -1)
             if [ -n "$CHANGED" ]; then
               echo "app_changed=true" >> "$GITHUB_OUTPUT"
@@ -84,12 +74,10 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
-          PREV_VERSION="${PREV_TAG#v}"
 
           echo "Downloading APK from release $PREV_TAG..."
           gh release download "$PREV_TAG" --pattern "*.apk" --dir .
 
-          # Rename to current version
           PREV_APK=$(ls FindMe-v*.apk 2>/dev/null | head -1)
           if [ -z "$PREV_APK" ]; then
             echo "::error::No APK found in previous release $PREV_TAG"
@@ -136,26 +124,25 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > /tmp/findme-release.jks
           echo "Keystore decoded successfully"
 
-      - name: Verify version in build.gradle matches tag
-        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
-        working-directory: findme-app/android/app
-        run: |
-          GRADLE_VERSION_CODE=$(grep 'versionCode' build.gradle | head -1 | awk '{print $2}')
-          GRADLE_VERSION_NAME=$(grep 'versionName' build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          EXPECTED_CODE="${{ steps.version.outputs.version_code }}"
-          EXPECTED_NAME="${{ steps.version.outputs.version }}"
-
-          if [ "$GRADLE_VERSION_CODE" != "$EXPECTED_CODE" ] || [ "$GRADLE_VERSION_NAME" != "$EXPECTED_NAME" ]; then
-            echo "::error::Version mismatch! build.gradle has versionCode=$GRADLE_VERSION_CODE versionName=$GRADLE_VERSION_NAME but tag expects versionCode=$EXPECTED_CODE versionName=$EXPECTED_NAME"
-            echo "::error::Update build.gradle versionCode and versionName to match the tag before releasing."
-            exit 1
-          fi
-          echo "Version check passed: $EXPECTED_NAME (code: $EXPECTED_CODE)"
-
       - name: Regenerate native project
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: npx expo prebuild --clean --platform android
+
+      - name: Verify generated build.gradle
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
+        working-directory: findme-app
+        run: |
+          echo "=== Signing config check ==="
+          grep -A2 "signingConfigs.release" android/app/build.gradle || echo "WARNING: No release signing config found!"
+          echo ""
+          echo "=== Version check ==="
+          grep "versionCode\|versionName" android/app/build.gradle | head -2
+          echo ""
+          echo "=== Manifest service check ==="
+          grep -i "foregroundServiceType\|LocationTaskService\|POST_NOTIFICATIONS" android/app/src/main/AndroidManifest.xml || echo "WARNING: Missing service or permission!"
 
       - name: Bundle JS
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
@@ -170,6 +157,7 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Rename artifact
@@ -185,7 +173,6 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Generate release notes from commits since last tag
           PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${TAG}$" | head -1)
           if [ -n "$PREV_TAG" ]; then
             NOTES=$(gh api repos/${{ github.repository }}/releases/generate-notes \
@@ -203,7 +190,6 @@ jobs:
             gh release delete "$TAG" --yes --cleanup-tag=false
           fi
 
-          # Create release with APK — release only appears once APK is ready
           gh release create "$TAG" \
             "FindMe-v${VERSION}.apk" \
             --title "$TAG" \

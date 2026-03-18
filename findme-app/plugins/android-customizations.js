@@ -6,7 +6,9 @@
  * - Release signing config (keystore from env vars)
  * - Network security config (cleartext for local networks only)
  * - Gradle properties (R8 minification, architecture filter)
- * - ProGuard rules
+ * - POST_NOTIFICATIONS permission
+ * - Location foreground service declaration
+ * - versionCode from env var
  */
 const {
   withAndroidManifest,
@@ -18,38 +20,33 @@ const fs = require("fs");
 const path = require("path");
 
 /**
- * Add release signing config to build.gradle
+ * Fix release signing config in build.gradle.
+ * Expo's default template already has a signingConfigs block with only debug.
+ * We add a release config and point the release buildType to it.
  */
 function withReleaseSigning(config) {
   return withAppBuildGradle(config, (mod) => {
     let contents = mod.modResults.contents;
 
-    // Add release signing config if not present
-    if (!contents.includes("signingConfigs")) {
-      // Insert signing config block before buildTypes
+    // Add release signing config inside existing signingConfigs block
+    if (!contents.includes("signingConfigs.release")) {
+      // Add release entry after debug entry in signingConfigs
       contents = contents.replace(
-        /(\s+)(buildTypes\s*\{)/,
-        `$1signingConfigs {
-$1    debug {
-$1        storeFile file('debug.keystore')
-$1        storePassword 'android'
-$1        keyAlias 'androiddebugkey'
-$1        keyPassword 'android'
-$1    }
-$1    release {
-$1        storeFile file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "debug.keystore")
-$1        storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "android"
-$1        keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "androiddebugkey"
-$1        keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "android"
-$1    }
-$1}
-$1$2`
+        /(signingConfigs\s*\{[\s\S]*?debug\s*\{[\s\S]*?\})([\s\S]*?\})/m,
+        `$1
+        release {
+            storeFile file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "debug.keystore")
+            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "android"
+            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "androiddebugkey"
+            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "android"
+        }
+    }`
       );
 
-      // Add signingConfig to release buildType
+      // Point release buildType to release signing config
       contents = contents.replace(
-        /(release\s*\{[^}]*?)(minifyEnabled)/,
-        "$1signingConfig signingConfigs.release\n            $2"
+        /(release\s*\{[^}]*?)signingConfig\s+signingConfigs\.debug/,
+        "$1signingConfig signingConfigs.release"
       );
     }
 
@@ -59,10 +56,73 @@ $1$2`
 }
 
 /**
+ * Set versionCode from VERSION_CODE env var (CI sets this from the tag).
+ */
+function withVersionCode(config) {
+  return withAppBuildGradle(config, (mod) => {
+    let contents = mod.modResults.contents;
+
+    // Replace static versionCode with env-var-based one for CI
+    contents = contents.replace(
+      /versionCode\s+\d+/,
+      `versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "${config.android?.versionCode || 1}")`
+    );
+
+    mod.modResults.contents = contents;
+    return mod;
+  });
+}
+
+/**
+ * Add POST_NOTIFICATIONS permission and location foreground service to AndroidManifest
+ */
+function withLocationForegroundService(config) {
+  return withAndroidManifest(config, (mod) => {
+    const manifest = mod.modResults.manifest;
+
+    // Add POST_NOTIFICATIONS permission if missing
+    const permissions = manifest["uses-permission"] || [];
+    const hasPostNotif = permissions.some(
+      (p) =>
+        p.$?.["android:name"] === "android.permission.POST_NOTIFICATIONS"
+    );
+    if (!hasPostNotif) {
+      permissions.push({
+        $: { "android:name": "android.permission.POST_NOTIFICATIONS" },
+      });
+    }
+    manifest["uses-permission"] = permissions;
+
+    // Add foreground service for location if missing
+    const app = manifest.application?.[0];
+    if (app) {
+      if (!app.service) app.service = [];
+
+      const hasLocationService = app.service.some(
+        (s) =>
+          s.$?.["android:foregroundServiceType"] === "location"
+      );
+
+      if (!hasLocationService) {
+        app.service.push({
+          $: {
+            "android:name":
+              "expo.modules.location.services.LocationTaskService",
+            "android:foregroundServiceType": "location",
+            "android:exported": "false",
+          },
+        });
+      }
+    }
+
+    return mod;
+  });
+}
+
+/**
  * Add network security config XML and reference it in AndroidManifest
  */
 function withNetworkSecurityConfig(config) {
-  // Write the XML file
   config = withDangerousMod(config, [
     "android",
     async (mod) => {
@@ -73,23 +133,12 @@ function withNetworkSecurityConfig(config) {
       fs.mkdirSync(xmlDir, { recursive: true });
 
       const xmlContent = `<?xml version="1.0" encoding="utf-8"?>
-<!--
-  FindMe Network Security Configuration
-
-  FindMe is a self-hosted app: users run their own server, often on a local
-  network (e.g. 192.168.x.x, 10.x.x.x) where HTTPS may not be available.
-  Cleartext HTTP is therefore permitted ONLY for private/local IP ranges.
-  All other traffic requires HTTPS.
--->
 <network-security-config>
-  <!-- Default: require HTTPS for all connections -->
   <base-config cleartextTrafficPermitted="false">
     <trust-anchors>
       <certificates src="system" />
     </trust-anchors>
   </base-config>
-
-  <!-- Allow cleartext only for private network ranges (RFC 1918 + localhost) -->
   <domain-config cleartextTrafficPermitted="true">
     <domain includeSubdomains="true">localhost</domain>
     <domain includeSubdomains="true">10.0.0.0</domain>
@@ -106,7 +155,6 @@ function withNetworkSecurityConfig(config) {
     },
   ]);
 
-  // Reference in AndroidManifest
   config = withAndroidManifest(config, (mod) => {
     const app = mod.modResults.manifest.application?.[0];
     if (app) {
@@ -154,6 +202,8 @@ function withGradleProps(config) {
  */
 module.exports = function withAndroidCustomizations(config) {
   config = withReleaseSigning(config);
+  config = withVersionCode(config);
+  config = withLocationForegroundService(config);
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
   return config;
