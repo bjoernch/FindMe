@@ -53,16 +53,18 @@ EOF
 ## Features
 
 - **Live map** — Real-time positions via SSE, multiple map styles (street, satellite, dark, topo)
-- **People sharing** — Invite-based mutual location sharing between users
+- **People sharing** — Invite-based location sharing with two-way share approval (mutual, one-way, or view-only)
 - **Temporary share links** — Time-limited public location links (1h, 24h, 7d, or permanent)
-- **Geofencing** — Enter/exit alerts via push and email
-- **Location history** — View tracks with trip stats (distance, speed, elevation), export as GPX or CSV
-- **Push notifications** — Configurable per-user preferences with quiet hours
+- **Geofencing** — Draw geofences on an interactive map with enter/exit alerts via push and email
+- **Location history** — View tracks with trip stats, playback with timeline scrubber, export as GPX or CSV
+- **Notifications** — Configurable per-user preferences with quiet hours (polling-based, no Google/Firebase dependency)
 - **Offline mode** — Mobile app caches data and queues location updates when offline
-- **Passkey auth** — Passwordless login with WebAuthn/FIDO2
+- **Passkey auth** — Passwordless login with WebAuthn/FIDO2 (browser-based flow on mobile)
 - **QR code pairing** — Scan a code from the web dashboard to pair your phone
 - **Admin panel** — User management, password resets, device overview, SMTP settings
+- **Admin CLI** — `findme-admin` command inside Docker for server-side user management
 - **Dark mode** — System/light/dark on both web and mobile
+- **FOSS-friendly** — No Firebase, no Google MLKit, no analytics or tracking SDKs
 - **Docker ready** — Single-command deploy, multi-arch image, structured logging
 
 ## Tech Stack
@@ -76,7 +78,7 @@ EOF
 | Mobile | React Native (Expo) |
 | Maps | Leaflet |
 | Real-time | Server-Sent Events (SSE) |
-| Push | Expo Push Notifications |
+| Notifications | Polling-based (no Firebase/FCM) |
 | CI/CD | GitHub Actions, GHCR |
 
 ## Mobile App
@@ -96,7 +98,7 @@ The app requests only the permissions it needs. Each one is explained below.
 | `ACCESS_FINE_LOCATION` | High-accuracy GPS for real-time location sharing |
 | `ACCESS_COARSE_LOCATION` | Approximate location as fallback |
 | `ACCESS_BACKGROUND_LOCATION` | Continue sharing when the app is in background |
-| `CAMERA` | Scan QR codes for quick device pairing |
+| `CAMERA` | Take photos of QR codes for device pairing |
 | `FOREGROUND_SERVICE` | Keep location sharing active with a persistent notification |
 | `FOREGROUND_SERVICE_LOCATION` | Required for location foreground services on Android 14+ |
 | `INTERNET` | Communicate with the self-hosted server |
@@ -108,7 +110,7 @@ The app requests only the permissions it needs. Each one is explained below.
 FindMe's core function is sharing your GPS position with your self-hosted server. Fine location provides accurate coordinates; coarse location serves as a fallback when GPS is unavailable. Background location allows the app to keep sharing your position when it is not in the foreground — essential for continuous family tracking. The app runs an Android foreground service with a persistent notification ("Sharing your location") so the user is always aware that location access is active.
 
 **Camera** (`CAMERA`):
-Used exclusively for scanning QR codes during device pairing. The web dashboard displays a QR code that the app scans to link a device to a user account. The camera is not used for any other purpose.
+Used exclusively for scanning QR codes during device pairing. The app uses the device camera (via image picker) to photograph a QR code displayed on the web dashboard, then decodes it locally using a pure-JavaScript QR library (jsQR). No cloud-based barcode scanning services are used. The camera is not used for any other purpose.
 
 **Foreground service** (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`):
 Android requires these permissions to run a foreground service that keeps location sharing active. The service displays a persistent, non-dismissable notification so the user always knows the app is running. `FOREGROUND_SERVICE_LOCATION` is mandatory starting with Android 14 for services that access location.
@@ -137,6 +139,10 @@ The app never sends data in cleartext over the public internet. The blanket `and
 ### Tracking & Analytics
 
 FindMe contains **no advertising, analytics, or tracking services**. No data is sent to third parties. All communication is exclusively between the app and the user's own self-hosted server.
+
+The app does not include Firebase, Google MLKit, or any other proprietary Google SDK for its core functionality. QR code scanning uses a pure-JavaScript decoder (jsQR). Notifications use a polling mechanism instead of Firebase Cloud Messaging.
+
+> **Note:** The app currently depends on `play-services-location` via `expo-location` for battery-efficient background location tracking (Google's FusedLocationProviderClient). This is the only Google dependency. The app works on degoogled devices running [microG](https://microg.org/) as a drop-in replacement.
 
 ### Building from source
 
@@ -167,6 +173,27 @@ All configuration is via environment variables. Set them in a `.env` file or dir
 ### PostgreSQL
 
 For larger deployments, uncomment the PostgreSQL section in [`docker-compose.yml`](findme/docker-compose.yml) and update `DATABASE_URL`.
+
+### Admin CLI
+
+The Docker image includes a `findme-admin` command for server-side administration:
+
+```bash
+# List all users
+docker exec findme findme-admin list-users
+
+# Reset a user's password
+docker exec findme findme-admin reset-password user@example.com newpassword123
+
+# Change a user's email
+docker exec findme findme-admin change-email user@example.com newemail@example.com
+
+# Promote/demote admin status
+docker exec findme findme-admin set-admin user@example.com true
+
+# Delete a user and all their data
+docker exec findme findme-admin delete-user user@example.com
+```
 
 ## Releasing
 
