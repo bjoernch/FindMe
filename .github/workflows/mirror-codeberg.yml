@@ -86,19 +86,19 @@ jobs:
           gh release download "$TAG" --pattern "*.apk" --dir /tmp/apk 2>/dev/null || true
 
           # Delete existing Codeberg release for this tag (if any)
-          EXISTING_ID=$(curl -sf \
+          EXISTING_ID=$(curl -s \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             "${CODEBERG_API}/repos/${REPO}/releases/tags/${TAG}" \
             | jq -r '.id // empty' 2>/dev/null)
           if [ -n "$EXISTING_ID" ]; then
             echo "Deleting existing Codeberg release $EXISTING_ID..."
-            curl -sf -X DELETE \
+            curl -s -X DELETE \
               -H "Authorization: token ${CODEBERG_TOKEN}" \
               "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}" || true
           fi
 
           # Create release on Codeberg
-          RELEASE_ID=$(curl -sf -X POST \
+          RESPONSE=$(curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$(jq -n \
@@ -106,21 +106,27 @@ jobs:
               --arg name "$TITLE" \
               --arg body "$NOTES" \
               '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')" \
-            "${CODEBERG_API}/repos/${REPO}/releases" \
-            | jq -r '.id')
+            "${CODEBERG_API}/repos/${REPO}/releases")
 
+          echo "Codeberg API response: $RESPONSE"
+          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "::error::Failed to create Codeberg release"
+            exit 1
+          fi
           echo "Created Codeberg release ID: $RELEASE_ID"
 
           # Upload APK if it was downloaded
           APK_FILE=$(ls /tmp/apk/*.apk 2>/dev/null | head -1)
-          if [ -n "$APK_FILE" ] && [ -n "$RELEASE_ID" ]; then
+          if [ -n "$APK_FILE" ]; then
             echo "Uploading $(basename "$APK_FILE") to Codeberg release..."
-            curl -sf -X POST \
+            UPLOAD_RESPONSE=$(curl -s -X POST \
               -H "Authorization: token ${CODEBERG_TOKEN}" \
               -F "attachment=@${APK_FILE}" \
-              "${CODEBERG_API}/repos/${REPO}/releases/${RELEASE_ID}/assets"
-            echo ""
+              "${CODEBERG_API}/repos/${REPO}/releases/${RELEASE_ID}/assets")
+            echo "Upload response: $UPLOAD_RESPONSE"
             echo "APK uploaded successfully"
           else
-            echo "No APK found or release creation failed, skipping upload"
+            echo "No APK found in GitHub release, skipping upload"
           fi
