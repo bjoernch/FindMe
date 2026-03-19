@@ -1,0 +1,102 @@
+name: Mirror to Codeberg
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_run:
+    workflows: ["Build & Release APK"]
+    types: [completed]
+
+# Required repository secrets:
+#   CODEBERG_TOKEN  - Codeberg personal access token with repo write permissions
+#   CODEBERG_USER   - Codeberg username
+
+jobs:
+  mirror:
+    name: Mirror repo to Codeberg
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Push to Codeberg
+        if: github.event_name == 'push'
+        run: |
+          git remote add codeberg https://${{ secrets.CODEBERG_USER }}:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/${{ secrets.CODEBERG_USER }}/FindMe.git
+          git push codeberg --all --force
+          git push codeberg --tags --force
+
+      - name: Mirror release with APK
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
+        run: |
+          # Get the tag from the triggering workflow
+          TAG=$(gh run view ${{ github.event.workflow_run.id }} --json headBranch -q .headBranch)
+          if [[ ! "$TAG" =~ ^v ]]; then
+            # If headBranch isn't a tag, try to get it from the event
+            TAG=$(gh run view ${{ github.event.workflow_run.id }} --json event -q '.event.ref' | sed 's|refs/tags/||')
+          fi
+          if [[ ! "$TAG" =~ ^v ]]; then
+            echo "Could not determine release tag, skipping release mirror"
+            exit 0
+          fi
+          echo "Mirroring release $TAG to Codeberg..."
+
+          VERSION="${TAG#v}"
+          CODEBERG_API="https://codeberg.org/api/v1"
+          REPO="${CODEBERG_USER}/FindMe"
+
+          # Get release notes from GitHub
+          NOTES=$(gh release view "$TAG" --json body -q .body 2>/dev/null || echo "Release $TAG")
+          TITLE=$(gh release view "$TAG" --json name -q .name 2>/dev/null || echo "$TAG")
+
+          # Download APK from GitHub release
+          gh release download "$TAG" --pattern "*.apk" --dir /tmp/apk 2>/dev/null || true
+
+          # Delete existing Codeberg release for this tag (if any)
+          EXISTING_ID=$(curl -sf \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${CODEBERG_API}/repos/${REPO}/releases/tags/${TAG}" \
+            | jq -r '.id // empty' 2>/dev/null)
+          if [ -n "$EXISTING_ID" ]; then
+            echo "Deleting existing Codeberg release $EXISTING_ID..."
+            curl -sf -X DELETE \
+              -H "Authorization: token ${CODEBERG_TOKEN}" \
+              "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}"
+          fi
+
+          # Create release on Codeberg
+          RELEASE_ID=$(curl -sf -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg tag "$TAG" \
+              --arg name "$TITLE" \
+              --arg body "$NOTES" \
+              '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')" \
+            "${CODEBERG_API}/repos/${REPO}/releases" \
+            | jq -r '.id')
+
+          echo "Created Codeberg release ID: $RELEASE_ID"
+
+          # Upload APK if it was downloaded
+          APK_FILE=$(ls /tmp/apk/*.apk 2>/dev/null | head -1)
+          if [ -n "$APK_FILE" ] && [ -n "$RELEASE_ID" ]; then
+            echo "Uploading $(basename "$APK_FILE") to Codeberg release..."
+            curl -sf -X POST \
+              -H "Authorization: token ${CODEBERG_TOKEN}" \
+              -F "attachment=@${APK_FILE}" \
+              "${CODEBERG_API}/repos/${REPO}/releases/${RELEASE_ID}/assets"
+            echo ""
+            echo "APK uploaded successfully"
+          else
+            echo "No APK found or release creation failed, skipping upload"
+          fi
