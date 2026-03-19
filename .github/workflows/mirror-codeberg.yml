@@ -107,12 +107,12 @@ jobs:
               "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}" || true
           fi
 
-          # Create release on Codeberg (use "main" as target — the tag already exists from code mirror)
+          # Create release on Codeberg (tag already exists from code mirror, omit target_commitish)
           PAYLOAD=$(jq -n \
             --arg tag "$TAG" \
             --arg name "$TITLE" \
             --arg body "$NOTES" \
-            '{tag_name: $tag, name: $name, body: $body, target_commitish: "main", draft: false, prerelease: false}')
+            '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')
           echo "Request payload: $PAYLOAD"
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
