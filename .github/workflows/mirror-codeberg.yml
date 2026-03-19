@@ -121,6 +121,16 @@ jobs:
             -d "$PAYLOAD" \
             "${CODEBERG_API}/repos/${REPO}/releases")
 
+          # If header auth fails, try query param auth
+          HTTP_CHECK=$(echo "$RESPONSE" | tail -1)
+          if [ "$HTTP_CHECK" = "404" ] || [ "$HTTP_CHECK" = "401" ]; then
+            echo "Header auth failed ($HTTP_CHECK), trying query param auth..."
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "${CODEBERG_API}/repos/${REPO}/releases?token=${CODEBERG_TOKEN}")
+          fi
+
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | sed '$d')
           echo "HTTP status: $HTTP_CODE"
