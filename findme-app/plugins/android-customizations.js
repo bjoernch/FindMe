@@ -57,6 +57,7 @@ function withReleaseSigning(config) {
 
 /**
  * Set versionCode from VERSION_CODE env var (CI sets this from the tag).
+ * Also disables dependency metadata (encrypted Google blob) for FOSS compliance.
  */
 function withVersionCode(config) {
   return withAppBuildGradle(config, (mod) => {
@@ -67,6 +68,19 @@ function withVersionCode(config) {
       /versionCode\s+\d+/,
       `versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "${config.android?.versionCode || 1}")`
     );
+
+    // Disable dependency metadata (IzzyOnDroid/F-Droid requirement)
+    // This blob is encrypted with a Google public key and cannot be verified by anyone else.
+    if (!contents.includes("dependenciesInfo")) {
+      contents = contents.replace(
+        /(android\s*\{)/,
+        `$1
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }`
+      );
+    }
 
     mod.modResults.contents = contents;
     return mod;
