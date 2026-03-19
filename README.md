@@ -17,6 +17,11 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/bjoernch/FindMe">GitHub</a> &bull;
+  <a href="https://codeberg.org/bjoernch/FindMe">Codeberg</a>
+</p>
+
 ---
 
 ## Install
@@ -85,7 +90,7 @@ EOF
 
 The FindMe companion app runs on Android (iOS planned).
 
-**Install:** Download the latest APK from [GitHub Releases](../../releases). Packaging for the [IzzyOnDroid](https://apt.izzysoft.de/fdroid/) F-Droid repository has been [requested](https://codeberg.org/IzzyOnDroid/repodata/issues/67).
+**Install:** Download the latest APK from [GitHub Releases](https://github.com/bjoernch/FindMe/releases) or [Codeberg Releases](https://codeberg.org/bjoernch/FindMe/releases). Packaging for the [IzzyOnDroid](https://apt.izzysoft.de/fdroid/) F-Droid repository has been [requested](https://codeberg.org/IzzyOnDroid/repodata/issues/67).
 
 **Connect:** Open the app, enter your server URL, and register — or scan a QR pairing code from the web dashboard's Settings page.
 
@@ -197,10 +202,11 @@ docker exec findme findme-admin delete-user user@example.com
 
 ## Releasing
 
-Pushing a `v*` tag triggers two GitHub Actions workflows:
+Pushing a `v*` tag triggers GitHub Actions workflows:
 
 1. **Docker image** — Builds multi-arch (amd64 + arm64) and pushes to `ghcr.io/bjoernch/findme`
 2. **APK build** — Builds a signed Android APK and attaches it to the GitHub Release
+3. **Codeberg mirror** — Syncs code, tags, and releases (with APK) to [Codeberg](https://codeberg.org/bjoernch/FindMe)
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
