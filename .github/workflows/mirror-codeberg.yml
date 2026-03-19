@@ -5,6 +5,10 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      mirror_release:
+        description: 'Tag to mirror release for (e.g. v0.7.3). Leave empty to just sync code.'
+        required: false
   workflow_run:
     workflows: ["Build & Release APK"]
     types: [completed]
@@ -14,10 +18,10 @@ on:
 #   CODEBERG_USER   - Codeberg username
 
 jobs:
-  mirror:
+  mirror-code:
     name: Mirror repo to Codeberg
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -26,29 +30,47 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Codeberg
-        if: github.event_name == 'push'
         run: |
           git remote add codeberg https://${{ secrets.CODEBERG_USER }}:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/${{ secrets.CODEBERG_USER }}/FindMe.git
           git push codeberg --all --force
           git push codeberg --tags --force
 
+  mirror-release:
+    name: Mirror release to Codeberg
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.mirror_release != '')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Determine tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.mirror_release }}"
+          else
+            TAG=$(gh run view ${{ github.event.workflow_run.id }} --json headBranch -q .headBranch)
+            if [[ ! "$TAG" =~ ^v ]]; then
+              TAG=$(gh run view ${{ github.event.workflow_run.id }} --json event -q '.event.ref' | sed 's|refs/tags/||')
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Mirror release with APK
-        if: github.event_name == 'workflow_run'
+        if: startsWith(steps.tag.outputs.tag, 'v')
         env:
           GH_TOKEN: ${{ github.token }}
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
           CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          # Get the tag from the triggering workflow
-          TAG=$(gh run view ${{ github.event.workflow_run.id }} --json headBranch -q .headBranch)
-          if [[ ! "$TAG" =~ ^v ]]; then
-            # If headBranch isn't a tag, try to get it from the event
-            TAG=$(gh run view ${{ github.event.workflow_run.id }} --json event -q '.event.ref' | sed 's|refs/tags/||')
-          fi
-          if [[ ! "$TAG" =~ ^v ]]; then
-            echo "Could not determine release tag, skipping release mirror"
-            exit 0
-          fi
           echo "Mirroring release $TAG to Codeberg..."
 
           VERSION="${TAG#v}"
@@ -60,6 +82,7 @@ jobs:
           TITLE=$(gh release view "$TAG" --json name -q .name 2>/dev/null || echo "$TAG")
 
           # Download APK from GitHub release
+          mkdir -p /tmp/apk
           gh release download "$TAG" --pattern "*.apk" --dir /tmp/apk 2>/dev/null || true
 
           # Delete existing Codeberg release for this tag (if any)
@@ -71,7 +94,7 @@ jobs:
             echo "Deleting existing Codeberg release $EXISTING_ID..."
             curl -sf -X DELETE \
               -H "Authorization: token ${CODEBERG_TOKEN}" \
-              "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}"
+              "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}" || true
           fi
 
           # Create release on Codeberg
