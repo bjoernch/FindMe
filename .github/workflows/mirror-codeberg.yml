@@ -97,16 +97,30 @@ jobs:
               "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}" || true
           fi
 
+          # Get the commit SHA for the tag
+          TAG_SHA=$(git rev-list -n 1 "$TAG" 2>/dev/null || echo "main")
+          echo "Tag $TAG points to commit: $TAG_SHA"
+
           # Create release on Codeberg
-          RESPONSE=$(curl -s -X POST \
+          PAYLOAD=$(jq -n \
+            --arg tag "$TAG" \
+            --arg name "$TITLE" \
+            --arg body "$NOTES" \
+            --arg target "$TAG_SHA" \
+            '{tag_name: $tag, name: $name, body: $body, target_commitish: $target, draft: false, prerelease: false}')
+          echo "Request payload: $PAYLOAD"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg tag "$TAG" \
-              --arg name "$TITLE" \
-              --arg body "$NOTES" \
-              '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')" \
+            -d "$PAYLOAD" \
             "${CODEBERG_API}/repos/${REPO}/releases")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response body: $BODY"
+          RESPONSE="$BODY"
 
           echo "Codeberg API response: $RESPONSE"
           RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
