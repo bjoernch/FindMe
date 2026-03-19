@@ -77,6 +77,16 @@ jobs:
           CODEBERG_API="https://codeberg.org/api/v1"
           REPO="${CODEBERG_USER}/FindMe"
 
+          # Debug: verify token and repo access
+          echo "CODEBERG_USER=${CODEBERG_USER}"
+          echo "REPO=${REPO}"
+          AUTH_CHECK=$(curl -s -w "\n%{http_code}" -H "Authorization: token ${CODEBERG_TOKEN}" "${CODEBERG_API}/repos/${REPO}")
+          AUTH_CODE=$(echo "$AUTH_CHECK" | tail -1)
+          AUTH_BODY=$(echo "$AUTH_CHECK" | sed '$d')
+          echo "Auth check status: $AUTH_CODE"
+          echo "Repo full_name: $(echo "$AUTH_BODY" | jq -r '.full_name // "N/A"')"
+          echo "Repo permissions: $(echo "$AUTH_BODY" | jq -r '.permissions // "N/A"')"
+
           # Get release notes from GitHub
           NOTES=$(gh release view "$TAG" --json body -q .body 2>/dev/null || echo "Release $TAG")
           TITLE=$(gh release view "$TAG" --json name -q .name 2>/dev/null || echo "$TAG")
