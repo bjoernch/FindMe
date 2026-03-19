@@ -14,7 +14,7 @@ on:
     types: [completed]
 
 # Required repository secrets:
-#   CODEBERG_TOKEN  - Codeberg personal access token with repo write permissions
+#   CODEBERG_TOKEN  - Codeberg personal access token (repo + misc read/write)
 #   CODEBERG_USER   - Codeberg username
 
 jobs:
@@ -73,19 +73,8 @@ jobs:
         run: |
           echo "Mirroring release $TAG to Codeberg..."
 
-          VERSION="${TAG#v}"
           CODEBERG_API="https://codeberg.org/api/v1"
           REPO="${CODEBERG_USER}/FindMe"
-
-          # Debug: verify token and repo access
-          echo "CODEBERG_USER=${CODEBERG_USER}"
-          echo "REPO=${REPO}"
-          AUTH_CHECK=$(curl -s -w "\n%{http_code}" -H "Authorization: token ${CODEBERG_TOKEN}" "${CODEBERG_API}/repos/${REPO}")
-          AUTH_CODE=$(echo "$AUTH_CHECK" | tail -1)
-          AUTH_BODY=$(echo "$AUTH_CHECK" | sed '$d')
-          echo "Auth check status: $AUTH_CODE"
-          echo "Repo full_name: $(echo "$AUTH_BODY" | jq -r '.full_name // "N/A"')"
-          echo "Repo permissions: $(echo "$AUTH_BODY" | jq -r '.permissions // "N/A"')"
 
           # Get release notes from GitHub
           NOTES=$(gh release view "$TAG" --json body -q .body 2>/dev/null || echo "Release $TAG")
@@ -107,54 +96,32 @@ jobs:
               "${CODEBERG_API}/repos/${REPO}/releases/${EXISTING_ID}" || true
           fi
 
-          # Create release on Codeberg (tag already exists from code mirror, omit target_commitish)
-          PAYLOAD=$(jq -n \
-            --arg tag "$TAG" \
-            --arg name "$TITLE" \
-            --arg body "$NOTES" \
-            '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')
-          echo "Request payload: $PAYLOAD"
-
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          # Create release on Codeberg
+          RELEASE_ID=$(curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            "${CODEBERG_API}/repos/${REPO}/releases")
-
-          # If header auth fails, try query param auth
-          HTTP_CHECK=$(echo "$RESPONSE" | tail -1)
-          if [ "$HTTP_CHECK" = "404" ] || [ "$HTTP_CHECK" = "401" ]; then
-            echo "Header auth failed ($HTTP_CHECK), trying query param auth..."
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              "${CODEBERG_API}/repos/${REPO}/releases?token=${CODEBERG_TOKEN}")
-          fi
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          echo "HTTP status: $HTTP_CODE"
-          echo "Response body: $BODY"
-          RESPONSE="$BODY"
-
-          echo "Codeberg API response: $RESPONSE"
-          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+            -d "$(jq -n \
+              --arg tag "$TAG" \
+              --arg name "$TITLE" \
+              --arg body "$NOTES" \
+              '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')" \
+            "${CODEBERG_API}/repos/${REPO}/releases" \
+            | jq -r '.id // empty')
 
           if [ -z "$RELEASE_ID" ]; then
-            echo "::error::Failed to create Codeberg release"
+            echo "::error::Failed to create Codeberg release for $TAG"
             exit 1
           fi
           echo "Created Codeberg release ID: $RELEASE_ID"
 
-          # Upload APK if it was downloaded
+          # Upload APK if available
           APK_FILE=$(ls /tmp/apk/*.apk 2>/dev/null | head -1)
           if [ -n "$APK_FILE" ]; then
             echo "Uploading $(basename "$APK_FILE") to Codeberg release..."
-            UPLOAD_RESPONSE=$(curl -s -X POST \
+            curl -s -X POST \
               -H "Authorization: token ${CODEBERG_TOKEN}" \
               -F "attachment=@${APK_FILE}" \
-              "${CODEBERG_API}/repos/${REPO}/releases/${RELEASE_ID}/assets")
-            echo "Upload response: $UPLOAD_RESPONSE"
+              "${CODEBERG_API}/repos/${REPO}/releases/${RELEASE_ID}/assets" > /dev/null
             echo "APK uploaded successfully"
           else
             echo "No APK found in GitHub release, skipping upload"
