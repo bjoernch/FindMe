@@ -1,7 +1,7 @@
-// Use named export to avoid ESM/CJS interop issues with Metro/Hermes
-import { decodeQR } from "@paulmillr/qr/decode.js";
-import { decode as decodeJpeg } from "jpeg-js";
-import { Buffer } from "buffer";
+// Use require() to avoid ESM/CJS interop issues with Metro/Hermes bundler
+const { decodeQR } = require("@paulmillr/qr/decode.js");
+const { decode: decodeJpeg } = require("jpeg-js");
+const { Buffer } = require("buffer");
 
 /**
  * Decode a QR code from a base64-encoded JPEG image.
