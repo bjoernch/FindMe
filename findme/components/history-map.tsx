@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -12,6 +12,27 @@ import {
 import L from "leaflet";
 import { useTheme } from "./theme-provider";
 import type { LocationData } from "@/types/api";
+
+type TileLayerId = "dark" | "light" | "satellite" | "osm";
+
+const TILE_LAYERS: Record<TileLayerId, { label: string; url: string; maxZoom: number }> = {
+  dark: { label: "Dark", url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", maxZoom: 19 },
+  light: { label: "Light", url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", maxZoom: 19 },
+  satellite: { label: "Satellite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", maxZoom: 18 },
+  osm: { label: "OpenStreetMap", url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", maxZoom: 19 },
+};
+
+const TILE_IDS: TileLayerId[] = ["dark", "light", "satellite", "osm"];
+
+function TileLayerSwitcher({ tileId }: { tileId: TileLayerId }) {
+  const map = useMap();
+  useEffect(() => {
+    const layer = TILE_LAYERS[tileId];
+    map.eachLayer((l) => { if (l instanceof L.TileLayer) map.removeLayer(l); });
+    L.tileLayer(layer.url, { maxZoom: layer.maxZoom }).addTo(map);
+  }, [tileId, map]);
+  return null;
+}
 
 function FitPolyline({ locations }: { locations: LocationData[] }) {
   const map = useMap();
@@ -65,19 +86,36 @@ export function HistoryMap({
 }: HistoryMapProps) {
   const { isDark } = useTheme();
 
-  const tileUrl =
-    process.env.NEXT_PUBLIC_MAP_TILE_URL ||
-    (isDark
-      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png");
-  const attribution =
-    process.env.NEXT_PUBLIC_MAP_ATTRIBUTION || "";
+  const [tileId, setTileId] = useState<TileLayerId>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("findme-history-tile");
+      if (saved && saved in TILE_LAYERS) return saved as TileLayerId;
+    }
+    return isDark ? "dark" : "light";
+  });
+  const [showPicker, setShowPicker] = useState(false);
+  const [userChose, setUserChose] = useState(() => {
+    if (typeof window !== "undefined") return !!localStorage.getItem("findme-history-tile");
+    return false;
+  });
+
+  useEffect(() => {
+    if (!userChose) setTileId(isDark ? "dark" : "light");
+  }, [isDark, userChose]);
+
+  function handleTileChange(id: TileLayerId) {
+    setTileId(id);
+    setUserChose(true);
+    setShowPicker(false);
+    localStorage.setItem("findme-history-tile", id);
+  }
 
   // Reverse so oldest is first (polyline order)
   const sorted = [...locations].reverse();
   const positions: [number, number][] = sorted.map((l) => [l.lat, l.lng]);
 
   return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
     <MapContainer
       center={[51.505, -0.09]}
       zoom={3}
@@ -85,7 +123,7 @@ export function HistoryMap({
       style={{ background: "var(--map-bg)" }}
       zoomControl={false}
     >
-      <TileLayer url={tileUrl} attribution={attribution} />
+      <TileLayerSwitcher tileId={tileId} />
       <FitPolyline locations={locations} />
       {!playbackPoint && <FlyToPoint point={selectedPoint} />}
       {playbackPoint && <PanToPlayback point={playbackPoint} />}
@@ -181,5 +219,51 @@ export function HistoryMap({
         </CircleMarker>
       )}
     </MapContainer>
+    {/* Tile picker */}
+    <div style={{ position: "absolute", bottom: 12, right: 12, zIndex: 1000 }}>
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        style={{
+          width: 42, height: 42, borderRadius: "50%",
+          background: "rgba(0,0,0,0.65)", border: "none", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", fontSize: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+        }}
+        title="Change map style"
+      >
+        🗺
+      </button>
+      {showPicker && (
+        <>
+          <div onClick={() => setShowPicker(false)} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
+          <div style={{
+            position: "absolute", bottom: 52, right: 0, zIndex: 1001,
+            background: "var(--color-surface, #fff)", borderRadius: 12,
+            padding: "6px 0", minWidth: 170,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+            border: "1px solid var(--color-edge, #e5e7eb)",
+          }}>
+            {TILE_IDS.map((id) => (
+              <button
+                key={id}
+                onClick={() => handleTileChange(id)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  width: "100%", padding: "10px 16px", border: "none",
+                  background: id === tileId ? "var(--color-surface-light, #f3f4f6)" : "transparent",
+                  cursor: "pointer", fontSize: 14,
+                  fontWeight: id === tileId ? 700 : 500,
+                  color: id === tileId ? "var(--color-accent, #3b82f6)" : "var(--color-text, #111)",
+                }}
+              >
+                {TILE_LAYERS[id].label}
+                {id === tileId && <span style={{ marginLeft: 8 }}>✓</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+    </div>
   );
 }

@@ -26,6 +26,7 @@ model User {
   qrSessions           QrSession[]
   passkeys             Passkey[]
   geofences            Geofence[]
+  monitoredGeofences   Geofence[] @relation("MonitoredGeofences")
   pushTokens           PushToken[]
   notifications        Notification[]
   notificationPrefs    NotificationPreference?
@@ -135,22 +136,25 @@ model QrSession {
 }
 
 model Geofence {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  lat       Float
-  lng       Float
-  radiusM   Float    @default(200)
-  isActive  Boolean  @default(true)
-  onEnter   Boolean  @default(true)
-  onExit    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  monitoredUserId String?
+  name            String
+  lat             Float
+  lng             Float
+  radiusM         Float    @default(200)
+  isActive        Boolean  @default(true)
+  onEnter         Boolean  @default(true)
+  onExit          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  events GeofenceEvent[]
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monitoredUser User?           @relation("MonitoredGeofences", fields: [monitoredUserId], references: [id], onDelete: Cascade)
+  events        GeofenceEvent[]
 
   @@index([userId])
+  @@index([monitoredUserId])
 }
 
 model GeofenceEvent {

@@ -83,6 +83,12 @@ function getPresetDates(preset: DatePreset): { from: string; to: string } {
   }
 }
 
+type HistoryMode = "device" | "person";
+
+interface SharedPerson {
+  user: { id: string; name: string | null; email: string };
+}
+
 export default function HistoryDashboardPage() {
   const [devices, setDevices] = useState<DevicePublic[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
@@ -94,6 +100,9 @@ export default function HistoryDashboardPage() {
   const [fromDate, setFromDate] = useState(() => getPresetDates("today").from);
   const [toDate, setToDate] = useState(() => getPresetDates("today").to);
   const [selectedPoint, setSelectedPoint] = useState<LocationData | null>(null);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>("device");
+  const [people, setPeople] = useState<SharedPerson[]>([]);
+  const [selectedPersonId, setSelectedPersonId] = useState<string>("");
 
   // Playback
   const [playing, setPlaying] = useState(false);
@@ -140,15 +149,22 @@ export default function HistoryDashboardPage() {
     }
   }, [playbackIndex, playbackPoint]);
 
-  // Load devices
+  // Load devices and people
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/devices");
-        const data: ApiResponse<DevicePublic[]> = await res.json();
-        if (data.success && data.data) {
-          setDevices(data.data);
-          if (data.data.length > 0) setSelectedDeviceId(data.data[0].id);
+        const [devRes, pplRes] = await Promise.all([
+          fetch("/api/devices"),
+          fetch("/api/people"),
+        ]);
+        const devData: ApiResponse<DevicePublic[]> = await devRes.json();
+        if (devData.success && devData.data) {
+          setDevices(devData.data);
+          if (devData.data.length > 0) setSelectedDeviceId(devData.data[0].id);
+        }
+        const pplData = await pplRes.json();
+        if (pplData.success && pplData.data) {
+          setPeople(pplData.data);
         }
       } catch {
         // silent
@@ -159,15 +175,15 @@ export default function HistoryDashboardPage() {
     load();
   }, []);
 
-  // Load history when device or dates change
+  // Load history when device/person or dates change
   useEffect(() => {
-    if (!selectedDeviceId) return;
+    if (historyMode === "device" && !selectedDeviceId) return;
+    if (historyMode === "person" && !selectedPersonId) return;
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeviceId]);
+  }, [selectedDeviceId, selectedPersonId, historyMode]);
 
   async function fetchHistory() {
-    if (!selectedDeviceId) return;
     setHistoryLoading(true);
     setError(null);
     stopPlayback();
@@ -176,7 +192,12 @@ export default function HistoryDashboardPage() {
       const params = new URLSearchParams({ limit: "5000" });
       if (fromDate) params.set("from", new Date(fromDate).toISOString());
       if (toDate) params.set("to", new Date(toDate).toISOString());
-      const res = await fetch(`/api/location/${selectedDeviceId}/history?${params.toString()}`);
+
+      const url = historyMode === "person"
+        ? `/api/location/person/${selectedPersonId}/history?${params.toString()}`
+        : `/api/location/${selectedDeviceId}/history?${params.toString()}`;
+
+      const res = await fetch(url);
       const data: ApiResponse<LocationData[]> = await res.json();
       if (data.success && data.data) {
         setLocations(data.data);
@@ -200,7 +221,8 @@ export default function HistoryDashboardPage() {
   }
 
   function exportHistory(format: "gpx" | "csv") {
-    if (!selectedDeviceId) return;
+    if (historyMode === "device" && !selectedDeviceId) return;
+    if (historyMode === "person") return; // Export not supported for person mode yet
     const params = new URLSearchParams({ format });
     if (fromDate) params.set("from", new Date(fromDate).toISOString());
     if (toDate) params.set("to", new Date(toDate).toISOString());
@@ -219,20 +241,59 @@ export default function HistoryDashboardPage() {
 
       {/* Controls */}
       <div className="bg-card border border-edge rounded-xl p-4 mb-6">
-        <div className="flex flex-wrap items-end gap-4">
-          {/* Device selector */}
-          <div>
-            <label className="block text-sm text-sub mb-1">Device</label>
-            <select
-              value={selectedDeviceId}
-              onChange={(e) => setSelectedDeviceId(e.target.value)}
-              className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500"
+        {/* Mode tabs */}
+        {people.length > 0 && (
+          <div className="flex gap-1 mb-4">
+            <button
+              onClick={() => setHistoryMode("device")}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                historyMode === "device" ? "bg-blue-600 text-white" : "bg-input text-sub hover:bg-hover border border-edge"
+              }`}
             >
-              {devices.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} ({d.platform})</option>
-              ))}
-            </select>
+              By Device
+            </button>
+            <button
+              onClick={() => setHistoryMode("person")}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                historyMode === "person" ? "bg-blue-600 text-white" : "bg-input text-sub hover:bg-hover border border-edge"
+              }`}
+            >
+              By Person
+            </button>
           </div>
+        )}
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Device or Person selector */}
+          {historyMode === "device" ? (
+            <div>
+              <label className="block text-sm text-sub mb-1">Device</label>
+              <select
+                value={selectedDeviceId}
+                onChange={(e) => setSelectedDeviceId(e.target.value)}
+                className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500"
+              >
+                {devices.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name} ({d.platform})</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm text-sub mb-1">Person</label>
+              <select
+                value={selectedPersonId}
+                onChange={(e) => setSelectedPersonId(e.target.value)}
+                className="bg-input border border-edge-bold rounded-lg px-3 py-2 text-heading text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Select a person</option>
+                {people.map((p) => (
+                  <option key={p.user.id} value={p.user.id}>
+                    {p.user.name || p.user.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Date presets */}
           <div className="flex gap-1">

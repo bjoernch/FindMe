@@ -3,6 +3,7 @@ import { log } from "@/lib/logger";
 import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
+import { sendEmail } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
     const geofences = await prisma.geofence.findMany({
       where: { userId: authResult.id },
       include: {
+        monitoredUser: { select: { id: true, name: true, email: true } },
         events: {
           orderBy: { timestamp: "desc" },
           take: 5,
@@ -32,15 +34,32 @@ export async function POST(req: NextRequest) {
     const authResult = await authenticateRequest(req);
     if (authResult instanceof Response) return authResult;
 
-    const { name, lat, lng, radiusM, onEnter, onExit } = await req.json();
+    const { name, lat, lng, radiusM, onEnter, onExit, monitoredUserId } = await req.json();
 
     if (!name || lat == null || lng == null) {
       return apiError("name, lat, and lng are required", 400);
     }
 
+    // If monitoring another user, validate an accepted PeopleShare exists
+    if (monitoredUserId) {
+      const share = await prisma.peopleShare.findFirst({
+        where: {
+          status: "ACCEPTED",
+          OR: [
+            { fromUserId: authResult.id, toUserId: monitoredUserId },
+            { fromUserId: monitoredUserId, toUserId: authResult.id },
+          ],
+        },
+      });
+      if (!share) {
+        return apiError("You can only create geofences for people who share with you", 403);
+      }
+    }
+
     const geofence = await prisma.geofence.create({
       data: {
         userId: authResult.id,
+        monitoredUserId: monitoredUserId || null,
         name,
         lat,
         lng,
@@ -49,6 +68,31 @@ export async function POST(req: NextRequest) {
         onExit: onExit !== false,
       },
     });
+
+    // Notify monitored user by email
+    if (monitoredUserId) {
+      const [owner, monitored] = await Promise.all([
+        prisma.user.findUnique({ where: { id: authResult.id }, select: { name: true, email: true } }),
+        prisma.user.findUnique({ where: { id: monitoredUserId }, select: { email: true } }),
+      ]);
+      if (monitored?.email && owner) {
+        const ownerName = owner.name || owner.email;
+        sendEmail({
+          to: monitored.email,
+          subject: `${ownerName} created a geofence for you on FindMe`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+              <h2 style="color: #3b82f6;">FindMe - Geofence Created</h2>
+              <p><strong>${ownerName}</strong> has created a geofence named <strong>"${name}"</strong> to monitor your location.</p>
+              <p>You will be tracked for enter/exit events at this location.</p>
+              <p style="color: #666; font-size: 12px; margin-top: 24px;">
+                This is an automated notification from FindMe.
+              </p>
+            </div>
+          `,
+        }).catch((e) => log.error("geofences", "Failed to notify monitored user", e));
+      }
+    }
 
     return apiSuccess(geofence, undefined, 201);
   } catch (error) {

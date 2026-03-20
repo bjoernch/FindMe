@@ -14,6 +14,12 @@ const GeofenceMap = dynamic(() => import("@/components/geofence-map"), {
   ),
 });
 
+interface MonitoredUser {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
 interface Geofence {
   id: string;
   name: string;
@@ -23,6 +29,8 @@ interface Geofence {
   isActive: boolean;
   onEnter: boolean;
   onExit: boolean;
+  monitoredUserId: string | null;
+  monitoredUser: MonitoredUser | null;
   createdAt: string;
   events: Array<{
     id: string;
@@ -32,6 +40,10 @@ interface Geofence {
     lng: number;
     timestamp: string;
   }>;
+}
+
+interface SharedPerson {
+  user: { id: string; name: string | null; email: string };
 }
 
 export default function GeofencesPage() {
@@ -49,10 +61,29 @@ export default function GeofencesPage() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sharedPeople, setSharedPeople] = useState<SharedPerson[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [editValues, setEditValues] = useState<{
+    name: string;
+    radiusM: number;
+    onEnter: boolean;
+    onExit: boolean;
+  } | null>(null);
 
   useEffect(() => {
     loadGeofences();
+    loadSharedPeople();
   }, []);
+
+  async function loadSharedPeople() {
+    try {
+      const res = await fetch("/api/people");
+      const data = await res.json();
+      if (data.success && data.data) setSharedPeople(data.data);
+    } catch {
+      // silent
+    }
+  }
 
   async function loadGeofences() {
     try {
@@ -65,6 +96,8 @@ export default function GeofencesPage() {
       setLoading(false);
     }
   }
+
+  const [monitorTarget, setMonitorTarget] = useState<string>("");
 
   function handleMapClick(lat: number, lng: number) {
     if (!creating) return;
@@ -97,12 +130,14 @@ export default function GeofencesPage() {
           radiusM: newFence.radiusM,
           onEnter: newFence.onEnter,
           onExit: newFence.onExit,
+          monitoredUserId: monitorTarget || undefined,
         }),
       });
       const data: ApiResponse<Geofence> = await res.json();
       if (data.success) {
         setNewFence(null);
         setCreating(false);
+        setMonitorTarget("");
         loadGeofences();
       } else {
         setError(data.error || "Failed to create geofence");
@@ -229,6 +264,25 @@ export default function GeofencesPage() {
               </div>
             </div>
           </div>
+          {sharedPeople.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-sub mb-1">Monitor</label>
+                <select
+                  value={monitorTarget}
+                  onChange={(e) => setMonitorTarget(e.target.value)}
+                  className="w-full bg-input border border-edge-bold rounded-lg px-4 py-2.5 text-heading focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">My Devices</option>
+                  {sharedPeople.map((p) => (
+                    <option key={p.user.id} value={p.user.id}>
+                      {p.user.name || p.user.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-6 mb-4">
             <label className="flex items-center gap-2 text-sm text-heading cursor-pointer">
               <input
@@ -281,32 +335,130 @@ export default function GeofencesPage() {
       {selected && !newFence && (
         <div className="bg-card border border-edge rounded-xl p-5 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-heading">{selected.name}</h3>
+            {editing && editValues ? (
+              <input
+                type="text"
+                value={editValues.name}
+                onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
+                className="text-lg font-semibold text-heading bg-input border border-edge-bold rounded-lg px-3 py-1 focus:outline-none focus:border-blue-500"
+              />
+            ) : (
+              <h3 className="text-lg font-semibold text-heading">{selected.name}</h3>
+            )}
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => updateFence(selected.id, { isActive: !selected.isActive })}
-                className="text-xs text-link hover:text-link-hover"
-              >
-                {selected.isActive ? "Disable" : "Enable"}
-              </button>
-              <button
-                onClick={() => deleteFence(selected.id)}
-                className="text-xs text-danger-fg hover:opacity-80"
-              >
-                Delete
-              </button>
+              {editing ? (
+                <>
+                  <button
+                    onClick={async () => {
+                      if (editValues) {
+                        await updateFence(selected.id, editValues);
+                        setEditing(false);
+                        setEditValues(null);
+                      }
+                    }}
+                    className="text-xs text-success-fg hover:opacity-80 font-medium"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setEditValues(null); }}
+                    className="text-xs text-sub hover:text-heading"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      setEditing(true);
+                      setEditValues({
+                        name: selected.name,
+                        radiusM: selected.radiusM,
+                        onEnter: selected.onEnter,
+                        onExit: selected.onExit,
+                      });
+                    }}
+                    className="text-xs text-link hover:text-link-hover"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => updateFence(selected.id, { isActive: !selected.isActive })}
+                    className="text-xs text-link hover:text-link-hover"
+                  >
+                    {selected.isActive ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    onClick={() => deleteFence(selected.id)}
+                    className="text-xs text-danger-fg hover:opacity-80"
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          <p className="text-sm text-hint mb-3">
-            📍 {selected.lat.toFixed(6)}, {selected.lng.toFixed(6)} · {selected.radiusM}m radius ·{" "}
-            <span className={selected.isActive ? "text-success-fg" : "text-dim"}>
-              {selected.isActive ? "Active" : "Disabled"}
-            </span>
-          </p>
-          <div className="flex items-center gap-4 mb-3 text-sm text-sub">
-            <span>{selected.onEnter ? "✓ Enter alerts" : "✗ Enter alerts"}</span>
-            <span>{selected.onExit ? "✓ Exit alerts" : "✗ Exit alerts"}</span>
-          </div>
+          {editing && editValues ? (
+            <>
+              <div className="mb-3">
+                <label className="block text-sm text-sub mb-1">
+                  Radius: {editValues.radiusM}m
+                </label>
+                <input
+                  type="range"
+                  min={50}
+                  max={5000}
+                  step={50}
+                  value={editValues.radiusM}
+                  onChange={(e) => setEditValues({ ...editValues, radiusM: parseInt(e.target.value) })}
+                  className="w-full accent-blue-500"
+                />
+                <div className="flex justify-between text-xs text-hint mt-1">
+                  <span>50m</span>
+                  <span>5km</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-6 mb-3">
+                <label className="flex items-center gap-2 text-sm text-heading cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editValues.onEnter}
+                    onChange={(e) => setEditValues({ ...editValues, onEnter: e.target.checked })}
+                    className="accent-blue-500"
+                  />
+                  Notify on enter
+                </label>
+                <label className="flex items-center gap-2 text-sm text-heading cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editValues.onExit}
+                    onChange={(e) => setEditValues({ ...editValues, onExit: e.target.checked })}
+                    className="accent-blue-500"
+                  />
+                  Notify on exit
+                </label>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-hint mb-3">
+                📍 {selected.lat.toFixed(6)}, {selected.lng.toFixed(6)} · {selected.radiusM}m radius ·{" "}
+                <span className={selected.isActive ? "text-success-fg" : "text-dim"}>
+                  {selected.isActive ? "Active" : "Disabled"}
+                </span>
+                {selected.monitoredUser && (
+                  <span className="ml-2">
+                    · Monitoring: <span className="text-heading font-medium">{selected.monitoredUser.name || selected.monitoredUser.email}</span>
+                  </span>
+                )}
+              </p>
+              <div className="flex items-center gap-4 mb-3 text-sm text-sub">
+                <span>{selected.onEnter ? "✓ Enter alerts" : "✗ Enter alerts"}</span>
+                <span>{selected.onExit ? "✓ Exit alerts" : "✗ Exit alerts"}</span>
+              </div>
+            </>
+          )}
           {selected.events.length > 0 && (
             <div className="border-t border-edge pt-3 mt-3">
               <p className="text-xs text-sub font-medium mb-2">Recent Events</p>
@@ -349,6 +501,11 @@ export default function GeofencesPage() {
                 <div className="flex-1 min-w-0">
                   <span className="text-heading font-medium text-sm">{fence.name}</span>
                   <span className="text-hint text-xs ml-2">{fence.radiusM}m</span>
+                  {fence.monitoredUser && (
+                    <span className="text-hint text-xs ml-2">
+                      · {fence.monitoredUser.name || fence.monitoredUser.email}
+                    </span>
+                  )}
                 </div>
                 {fence.events.length > 0 && (
                   <span className="text-xs text-hint">

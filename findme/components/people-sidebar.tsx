@@ -1,8 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AvatarCircle } from "./avatar-circle";
 import type { DeviceWithLocation, PersonWithDevices } from "@/types/api";
+
+// Client-side address cache
+const addressCache = new Map<string, string>();
+
+function useAddress(lat: number | undefined, lng: number | undefined): string | null {
+  const [address, setAddress] = useState<string | null>(null);
+  const fetchedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (lat == null || lng == null) return;
+    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+
+    if (addressCache.has(key)) {
+      setAddress(addressCache.get(key)!);
+      return;
+    }
+
+    if (fetchedRef.current === key) return;
+    fetchedRef.current = key;
+
+    fetch(`/api/geocode?lat=${lat}&lng=${lng}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data?.address) {
+          addressCache.set(key, data.data.address);
+          setAddress(data.data.address);
+        }
+      })
+      .catch(() => {});
+  }, [lat, lng]);
+
+  return address;
+}
+
+function DeviceAddress({ lat, lng }: { lat?: number; lng?: number }) {
+  const address = useAddress(lat, lng);
+  if (!lat || !lng) return null;
+  return (
+    <span className="ml-2 truncate max-w-[140px]" title={address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}>
+      {address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}
+    </span>
+  );
+}
 
 interface PeopleSidebarProps {
   myDevices: DeviceWithLocation[];
@@ -61,6 +104,30 @@ function personLastSeen(devices: DeviceWithLocation[]): string | null {
     }
   }
   return latest;
+}
+
+/** Get the most recent location across all devices */
+function personLatestLocation(devices: DeviceWithLocation[]): { lat: number; lng: number } | null {
+  let latest: { lat: number; lng: number; ts: string } | null = null;
+  for (const d of devices) {
+    if (d.latestLocation) {
+      if (!latest || d.latestLocation.timestamp > latest.ts) {
+        latest = { lat: d.latestLocation.lat, lng: d.latestLocation.lng, ts: d.latestLocation.timestamp };
+      }
+    }
+  }
+  return latest ? { lat: latest.lat, lng: latest.lng } : null;
+}
+
+function PersonAddress({ devices }: { devices: DeviceWithLocation[] }) {
+  const loc = personLatestLocation(devices);
+  const address = useAddress(loc?.lat, loc?.lng);
+  if (!loc) return null;
+  return (
+    <p className="text-xs text-hint truncate" title={address || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`}>
+      {address || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`}
+    </p>
+  );
 }
 
 function BatteryIndicator({ level }: { level: number | null }) {
@@ -182,6 +249,7 @@ export function PeopleSidebar({
                         <p className="text-sm text-heading font-medium truncate">
                           {person.user.name || person.user.email}
                         </p>
+                        <PersonAddress devices={person.devices} />
                         <p className="text-xs text-hint">
                           {formatLastSeen(personLastSeen(person.devices))}
                           {person.devices.length > 0 && (
@@ -323,10 +391,10 @@ export function PeopleSidebar({
                   <div className="mt-1 text-xs text-hint ml-4">
                     {formatLastSeen(device.lastSeen)}
                     {device.latestLocation && (
-                      <span className="ml-2">
-                        {device.latestLocation.lat.toFixed(4)},{" "}
-                        {device.latestLocation.lng.toFixed(4)}
-                      </span>
+                      <DeviceAddress
+                        lat={device.latestLocation.lat}
+                        lng={device.latestLocation.lng}
+                      />
                     )}
                   </div>
                 </div>

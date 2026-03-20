@@ -1,10 +1,12 @@
 import { prisma } from "./db";
 import { sseManager } from "./sse-manager";
 import { sendPushWithPrefs } from "./push";
+import { sendGeofenceAlertEmail } from "./email";
+import { shouldNotify } from "./notification-preferences";
 import { log } from "@/lib/logger";
 
-// In-memory cache: userId -> { geofenceId -> isInside }
-const geofenceState = new Map<string, Map<string, boolean>>();
+// In-memory cache: "ownerId:geofenceId" -> isInside (keyed by owner to support cross-user geofences)
+const geofenceState = new Map<string, boolean>();
 
 function haversineDistance(
   lat1: number,
@@ -23,39 +25,80 @@ function haversineDistance(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+async function sendGeofenceNotifications(
+  fence: { id: string; userId: string; name: string },
+  deviceName: string,
+  eventType: "ENTER" | "EXIT",
+  lat: number,
+  lng: number
+) {
+  const action = eventType === "ENTER" ? "entered" : "left";
+  const message = `${deviceName} ${action} "${fence.name}"`;
+
+  // SSE to geofence owner
+  sseManager.broadcastToUser(fence.userId, "geofence", {
+    type: eventType,
+    geofenceName: fence.name,
+    deviceName,
+    lat,
+    lng,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Push notification
+  sendPushWithPrefs(fence.userId, "Geofence Alert", message, "geofence").catch(
+    (e) => log.error("geofence", "Push notification failed", e)
+  );
+
+  // Email notification
+  shouldNotify(fence.userId, "email", "geofence")
+    .then(async (allowed) => {
+      if (!allowed) return;
+      const owner = await prisma.user.findUnique({
+        where: { id: fence.userId },
+        select: { email: true },
+      });
+      if (owner?.email) {
+        await sendGeofenceAlertEmail(owner.email, deviceName, fence.name, eventType);
+      }
+    })
+    .catch((e) => log.error("geofence", "Email notification failed", e));
+}
+
 export async function checkGeofences(
   userId: string,
   lat: number,
   lng: number,
   deviceName: string
 ) {
-  const geofences = await prisma.geofence.findMany({
-    where: { userId, isActive: true },
+  // Own geofences (monitors own devices)
+  const ownGeofences = await prisma.geofence.findMany({
+    where: { userId, monitoredUserId: null, isActive: true },
   });
 
-  if (geofences.length === 0) return;
+  // Geofences other users created to monitor THIS user
+  const monitoredGeofences = await prisma.geofence.findMany({
+    where: { monitoredUserId: userId, isActive: true },
+  });
 
-  // Get or create state map for this user
-  if (!geofenceState.has(userId)) {
-    geofenceState.set(userId, new Map());
-  }
-  const userState = geofenceState.get(userId)!;
+  const allGeofences = [...ownGeofences, ...monitoredGeofences];
+  if (allGeofences.length === 0) return;
 
-  for (const fence of geofences) {
+  for (const fence of allGeofences) {
+    const stateKey = `${fence.userId}:${fence.id}`;
     const distance = haversineDistance(lat, lng, fence.lat, fence.lng);
     const isInside = distance <= fence.radiusM;
-    const wasInside = userState.get(fence.id);
+    const wasInside = geofenceState.get(stateKey);
 
     // First check for this geofence - just set state
     if (wasInside === undefined) {
-      userState.set(fence.id, isInside);
+      geofenceState.set(stateKey, isInside);
       continue;
     }
 
     // Detect enter/exit transitions
     if (isInside && !wasInside && fence.onEnter) {
-      // Entered geofence
-      userState.set(fence.id, true);
+      geofenceState.set(stateKey, true);
 
       await prisma.geofenceEvent.create({
         data: {
@@ -67,23 +110,9 @@ export async function checkGeofences(
         },
       });
 
-      const message = `${deviceName} entered "${fence.name}"`;
-      sseManager.broadcastToUser(userId, "geofence", {
-        type: "ENTER",
-        geofenceName: fence.name,
-        deviceName,
-        lat,
-        lng,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Send push notification
-      sendPushWithPrefs(userId, "Geofence Alert", message, "geofence").catch(
-        (e) => log.error("geofence", "Push notification failed", e)
-      );
+      await sendGeofenceNotifications(fence, deviceName, "ENTER", lat, lng);
     } else if (!isInside && wasInside && fence.onExit) {
-      // Exited geofence
-      userState.set(fence.id, false);
+      geofenceState.set(stateKey, false);
 
       await prisma.geofenceEvent.create({
         data: {
@@ -95,21 +124,9 @@ export async function checkGeofences(
         },
       });
 
-      const message = `${deviceName} left "${fence.name}"`;
-      sseManager.broadcastToUser(userId, "geofence", {
-        type: "EXIT",
-        geofenceName: fence.name,
-        deviceName,
-        lat,
-        lng,
-        timestamp: new Date().toISOString(),
-      });
-
-      sendPushWithPrefs(userId, "Geofence Alert", message, "geofence").catch(
-        (e) => log.error("geofence", "Push notification failed", e)
-      );
+      await sendGeofenceNotifications(fence, deviceName, "EXIT", lat, lng);
     } else {
-      userState.set(fence.id, isInside);
+      geofenceState.set(stateKey, isInside);
     }
   }
 }
