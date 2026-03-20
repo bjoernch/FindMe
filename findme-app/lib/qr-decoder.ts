@@ -1,4 +1,5 @@
-import decodeQR from "@paulmillr/qr/decode";
+// Use direct file path — Metro bundler doesn't resolve package.json "exports" subpaths
+import decodeQR from "@paulmillr/qr/decode.js";
 import { decode as decodeJpeg } from "jpeg-js";
 import { Buffer } from "buffer";
 
