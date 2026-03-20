@@ -1,11 +1,11 @@
-import jsQR from "jsqr";
+// Use named export to avoid ESM/CJS interop issues with Metro/Hermes
+import { decodeQR } from "@paulmillr/qr/decode.js";
 import { decode as decodeJpeg } from "jpeg-js";
 import { Buffer } from "buffer";
 
 /**
  * Decode a QR code from a base64-encoded JPEG image.
- * Uses pure JS libraries (jsQR + jpeg-js) — no native dependencies.
- * jsQR is robust with real-world camera photos (noise, perspective, lighting).
+ * Uses pure JS libraries (@paulmillr/qr + jpeg-js) — no native dependencies.
  * Returns the QR code data string, or null if no QR code found.
  */
 export function decodeQRFromBase64(base64: string): string | null {
@@ -16,8 +16,8 @@ export function decodeQRFromBase64(base64: string): string | null {
       formatAsRGBA: true,
     });
 
-    const result = jsQR(new Uint8ClampedArray(data), width, height);
-    return result?.data ?? null;
+    const result = decodeQR({ data: new Uint8Array(data), width, height });
+    return result ?? null;
   } catch (e) {
     console.warn("QR decode error:", e);
     return null;
