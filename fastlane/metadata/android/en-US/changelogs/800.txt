@@ -1,0 +1,6 @@
+- Geofences for shared people: monitor when contacts enter/leave areas
+- Edit geofences: change name, radius, and alert settings inline
+- Geofence email notifications now work (enter/exit alerts via email)
+- Reverse geocoding: addresses shown instead of coordinates in sidebar
+- History map tile switcher (dark, light, satellite, OSM)
+- History by person: view combined location tracks across all devices
