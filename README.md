@@ -60,8 +60,9 @@ EOF
 - **Live map** — Real-time positions via SSE, multiple map styles (street, satellite, dark, topo)
 - **People sharing** — Invite-based location sharing with two-way share approval (mutual, one-way, or view-only)
 - **Temporary share links** — Time-limited public location links (1h, 24h, 7d, or permanent)
-- **Geofencing** — Draw geofences on an interactive map with enter/exit alerts via push and email
-- **Location history** — View tracks with trip stats, playback with timeline scrubber, export as GPX or CSV
+- **Geofencing** — Draw geofences on an interactive map with enter/exit alerts via push and email, monitor your own devices or shared people's locations
+- **Location history** — View tracks by device or by person, trip stats, playback with timeline scrubber, multiple map styles, export as GPX or CSV
+- **Reverse geocoding** — Human-readable addresses in the sidebar instead of raw coordinates (via OpenStreetMap/Nominatim)
 - **Notifications** — Configurable per-user preferences with quiet hours (polling-based, no Google/Firebase dependency)
 - **Offline mode** — Mobile app caches data and queues location updates when offline
 - **Passkey auth** — Passwordless login with WebAuthn/FIDO2 (browser-based flow on mobile)
@@ -115,7 +116,7 @@ The app requests only the permissions it needs. Each one is explained below.
 FindMe's core function is sharing your GPS position with your self-hosted server. Fine location provides accurate coordinates; coarse location serves as a fallback when GPS is unavailable. Background location allows the app to keep sharing your position when it is not in the foreground — essential for continuous family tracking. The app runs an Android foreground service with a persistent notification ("Sharing your location") so the user is always aware that location access is active.
 
 **Camera** (`CAMERA`):
-Used exclusively for scanning QR codes during device pairing. The app uses the device camera (via image picker) to photograph a QR code displayed on the web dashboard, then decodes it locally using a pure-JavaScript QR library (jsQR). No cloud-based barcode scanning services are used. The camera is not used for any other purpose.
+Used exclusively for scanning QR codes during device pairing. The app uses the device camera (via image picker) to photograph a QR code displayed on the web dashboard, then decodes it locally using a pure-JavaScript QR library (@paulmillr/qr). No cloud-based barcode scanning services are used. The camera is not used for any other purpose.
 
 **Foreground service** (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`):
 Android requires these permissions to run a foreground service that keeps location sharing active. The service displays a persistent, non-dismissable notification so the user always knows the app is running. `FOREGROUND_SERVICE_LOCATION` is mandatory starting with Android 14 for services that access location.
@@ -145,7 +146,7 @@ The app never sends data in cleartext over the public internet. The blanket `and
 
 FindMe contains **no advertising, analytics, or tracking services**. No data is sent to third parties. All communication is exclusively between the app and the user's own self-hosted server.
 
-The app does not include Firebase, Google MLKit, or any other proprietary Google SDK for its core functionality. QR code scanning uses a pure-JavaScript decoder (jsQR). Notifications use a polling mechanism instead of Firebase Cloud Messaging.
+The app does not include Firebase, Google MLKit, or any other proprietary Google SDK for its core functionality. QR code scanning uses a pure-JavaScript decoder (@paulmillr/qr). Notifications use a polling mechanism instead of Firebase Cloud Messaging.
 
 > **Note:** The app currently depends on `play-services-location` via `expo-location` for battery-efficient background location tracking (Google's FusedLocationProviderClient). This is the only Google dependency. The app works on degoogled devices running [microG](https://microg.org/) as a drop-in replacement.
 
