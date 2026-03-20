@@ -11,12 +11,12 @@ import {
   clearAll,
 } from "./storage";
 import {
+  requestAllPermissions,
   startBackgroundTracking,
   stopBackgroundTracking,
   sendForegroundUpdate,
-  showBatteryOptimizationBanner,
 } from "./location-service";
-import { registerForPushNotifications, unregisterPushNotifications } from "./push-notifications";
+import { unregisterPushNotifications } from "./push-notifications";
 import { clearCache } from "./offline-cache";
 import * as WebBrowser from "expo-web-browser";
 import type { UserPublic } from "./types";
@@ -200,26 +200,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   /**
-   * Start location tracking + notifications. Called after every successful auth
-   * AND on app restart when session is restored.
+   * Request all permissions and start location tracking.
+   * Called after every successful auth AND on app restart when session is restored.
    */
   async function setupLocationAndNotifications() {
     try {
-      // Request notification permission first (needed on Android 13+ for foreground service)
-      await registerForPushNotifications(apiClient);
-    } catch {}
+      // Request all permissions (notifications, foreground location, background location, battery)
+      const perms = await requestAllPermissions();
 
-    // Start background tracking (requests location permissions, shows foreground notification)
-    startBackgroundTracking()
-      .then((started) => {
-        if (started) showBatteryOptimizationBanner();
-      })
-      .catch((e) => console.warn("startBackgroundTracking failed:", e));
+      // Start background tracking if we have background location permission
+      if (perms.backgroundLocation) {
+        await startBackgroundTracking();
+      }
 
-    // Send an initial location update (fire and forget, don't block)
-    sendForegroundUpdate(apiClient).catch(() => {});
+      // Send an initial location update if we have at least foreground permission
+      if (perms.foregroundLocation) {
+        sendForegroundUpdate(apiClient).catch(() => {});
+      }
+    } catch (e) {
+      console.warn("setupLocationAndNotifications failed:", e);
+    }
 
-    // Check version compatibility
+    // Check version compatibility (non-blocking)
     checkVersionCompat();
   }
 
