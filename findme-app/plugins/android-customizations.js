@@ -82,21 +82,6 @@ function withVersionCode(config) {
       );
     }
 
-    // Replace Google's play-services-location with microG's FOSS implementation.
-    // Same API surface (FusedLocationProviderClient etc.), but open-source.
-    if (!contents.includes("org.microg.gms")) {
-      // Exclude Google's proprietary play-services-location from all dependencies
-      contents = contents.replace(
-        /(dependencies\s*\{)/,
-        `$1
-    // Use microG's FOSS play-services-location instead of Google's proprietary one
-    configurations.all {
-        exclude group: 'com.google.android.gms', module: 'play-services-location'
-    }
-    implementation 'org.microg.gms:play-services-location:0.3.6.244735'`
-      );
-    }
-
     mod.modResults.contents = contents;
     return mod;
   });
