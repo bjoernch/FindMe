@@ -1,0 +1,2 @@
+- Replace jsQR with @paulmillr/qr (actively maintained, 13x faster, Apache/MIT)
+- Replace Google play-services-location with microG FOSS implementation (same API)
