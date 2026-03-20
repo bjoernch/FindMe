@@ -189,15 +189,24 @@ async function requestBatteryOptimization(): Promise<void> {
 }
 
 export async function startBackgroundTracking(): Promise<boolean> {
+  // Check we have background permission before starting
+  const { status: bg } = await Location.getBackgroundPermissionsAsync();
+  if (bg !== "granted") return false;
+
   const isTracking = await Location.hasStartedLocationUpdatesAsync(
     LOCATION_TASK_NAME
   ).catch(() => false);
 
-  if (isTracking) return true;
-
-  // Check we have background permission before starting
-  const { status: bg } = await Location.getBackgroundPermissionsAsync();
-  if (bg !== "granted") return false;
+  // Always stop and restart to ensure the foreground service notification is alive.
+  // If the user swiped the notification or Android killed the service,
+  // hasStartedLocationUpdatesAsync may still return true but the service is dead.
+  if (isTracking) {
+    try {
+      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    } catch {}
+    // Brief pause to let the system clean up
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
     accuracy: Location.Accuracy.Balanced,
@@ -230,6 +239,23 @@ export async function isTrackingActive(): Promise<boolean> {
   return Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(
     () => false
   );
+}
+
+/**
+ * Re-ensure background tracking is running. Call this on every app foreground
+ * event to recover from the notification being swiped or the service being killed.
+ * Does NOT show permission dialogs — only restarts if permissions are already granted.
+ */
+export async function ensureTrackingActive(): Promise<void> {
+  try {
+    const { status: bg } = await Location.getBackgroundPermissionsAsync();
+    if (bg !== "granted") return;
+
+    // Always restart to guarantee the foreground notification is showing
+    await startBackgroundTracking();
+  } catch (e) {
+    console.warn("ensureTrackingActive failed:", e);
+  }
 }
 
 // Keep legacy export for compatibility

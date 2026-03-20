@@ -3,11 +3,13 @@ import "../lib/location-task";
 
 import { Stack, useSegments, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { AppState } from "react-native";
 import { ThemeProvider, useTheme } from "../lib/theme-context";
 import { AuthProvider, useAuth } from "../lib/auth-context";
 import { setupNotificationHandlers } from "../lib/push-notifications";
 import { useNotificationPoller } from "../lib/notification-poller";
+import { ensureTrackingActive } from "../lib/location-service";
 import { LoadingScreen } from "../components/LoadingScreen";
 
 function RootNav() {
@@ -19,6 +21,22 @@ function RootNav() {
   useEffect(() => {
     setupNotificationHandlers();
   }, []);
+
+  // Re-ensure background tracking whenever app comes to foreground
+  // Recovers from notification being swiped or service being killed by Android
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === "active") {
+        ensureTrackingActive();
+      }
+      appState.current = nextState;
+    });
+
+    return () => sub.remove();
+  }, [isAuthenticated]);
 
   // Poll for notifications (replaces Firebase/FCM push for FOSS builds)
   useNotificationPoller(apiClient, isAuthenticated);
