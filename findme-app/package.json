@@ -11,6 +11,7 @@
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@notifee/react-native": "^9.1.8",
+    "@paulmillr/qr": "^0.3.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/netinfo": "^11.5.2",
     "buffer": "^6.0.3",
@@ -31,7 +32,6 @@
     "expo-task-manager": "~55.0.4",
     "expo-web-browser": "~55.0.9",
     "jpeg-js": "^0.4.4",
-    "jsqr": "^1.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-native": "^0.83.4",
