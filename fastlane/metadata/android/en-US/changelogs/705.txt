@@ -1,0 +1,3 @@
+- Replace jsQR with @paulmillr/qr (actively maintained, Apache/MIT)
+- Remove Google dependency metadata block from APK
+- Fix crash caused by microG client library on standard Android devices
