@@ -1,21 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  FindMe Network Security Configuration
-
-  FindMe is a self-hosted app: users run their own server, often on a local
-  network (e.g. 192.168.x.x, 10.x.x.x) where HTTPS may not be available.
-  Cleartext HTTP is therefore permitted ONLY for private/local IP ranges.
-  All other traffic requires HTTPS.
--->
 <network-security-config>
-  <!-- Default: require HTTPS for all connections -->
   <base-config cleartextTrafficPermitted="false">
     <trust-anchors>
       <certificates src="system" />
     </trust-anchors>
   </base-config>
-
-  <!-- Allow cleartext only for private network ranges (RFC 1918 + localhost) -->
   <domain-config cleartextTrafficPermitted="true">
     <domain includeSubdomains="true">localhost</domain>
     <domain includeSubdomains="true">10.0.0.0</domain>

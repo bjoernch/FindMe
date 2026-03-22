@@ -1,0 +1,1002 @@
+diff --git a/node_modules/expo-location/android/build.gradle b/node_modules/expo-location/android/build.gradle
+index 9b6adce..cc91860 100644
+--- a/node_modules/expo-location/android/build.gradle
++++ b/node_modules/expo-location/android/build.gradle
+@@ -16,5 +16,5 @@ android {
+ }
+ 
+ dependencies {
+-  api 'com.google.android.gms:play-services-location:21.0.1'
++  // No Google Play Services dependency - using Android LocationManager API directly
+ }
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationHelpers.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationHelpers.kt
+index 62caaba..10a691b 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationHelpers.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationHelpers.kt
+@@ -1,14 +1,15 @@
+ package expo.modules.location
+ 
+ import android.content.Context
++import android.location.Criteria
+ import android.location.Location
++import android.location.LocationListener
+ import android.location.LocationManager
++import android.os.Build
+ import android.os.Bundle
+-import com.google.android.gms.location.CurrentLocationRequest
+-import com.google.android.gms.location.FusedLocationProviderClient
+-import com.google.android.gms.location.Granularity
+-import com.google.android.gms.location.LocationRequest
+-import com.google.android.gms.location.Priority
++import android.os.CancellationSignal
++import android.os.Looper
++import android.util.Log
+ import expo.modules.interfaces.permissions.Permissions
+ import expo.modules.kotlin.Promise
+ import expo.modules.kotlin.exception.CodedException
+@@ -43,52 +44,67 @@ class LocationHelpers {
+       return locationManager != null && locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+     }
+ 
+-    internal fun prepareLocationRequest(options: LocationOptions): LocationRequest {
++    /**
++     * Prepares location request parameters from options.
++     */
++    internal fun prepareLocationRequest(options: LocationOptions): NativeLocationRequest {
+       val locationParams = mapOptionsToLocationParams(options)
+-
+-      return LocationRequest.Builder(locationParams.interval)
+-        .setMinUpdateIntervalMillis(locationParams.interval)
+-        .setMaxUpdateDelayMillis(locationParams.interval)
+-        .setMinUpdateDistanceMeters(locationParams.distance)
+-        .setPriority(mapAccuracyToPriority(options.accuracy))
+-        .build()
++      return NativeLocationRequest(
++        provider = mapAccuracyToProvider(options.accuracy),
++        interval = locationParams.interval,
++        distance = locationParams.distance,
++        accuracy = options.accuracy
++      )
+     }
+ 
+-    internal fun prepareCurrentLocationRequest(options: LocationOptions): CurrentLocationRequest {
+-      val locationParams = mapOptionsToLocationParams(options)
+-
+-      return CurrentLocationRequest.Builder().apply {
+-        setGranularity(Granularity.GRANULARITY_PERMISSION_LEVEL)
+-        setPriority(mapAccuracyToPriority(options.accuracy))
+-        setMaxUpdateAgeMillis(locationParams.interval)
+-      }.build()
+-    }
++    /**
++     * Requests a single location update using Android LocationManager.
++     */
++    fun requestSingleLocation(locationManager: LocationManager, options: LocationOptions, promise: Promise) {
++      val provider = getBestAvailableProvider(locationManager, options.accuracy)
++      if (provider == null) {
++        promise.reject(CurrentLocationIsUnavailableException())
++        return
++      }
+ 
+-    fun requestSingleLocation(locationProvider: FusedLocationProviderClient, locationRequest: CurrentLocationRequest, promise: Promise) {
+       try {
+-        locationProvider.getCurrentLocation(locationRequest, null)
+-          .addOnSuccessListener { location: Location? ->
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
++          // API 30+: Use getCurrentLocation
++          val cancellationSignal = CancellationSignal()
++          locationManager.getCurrentLocation(
++            provider,
++            cancellationSignal,
++            { runnable -> runnable.run() }
++          ) { location: Location? ->
+             if (location == null) {
+               promise.reject(CurrentLocationIsUnavailableException())
+-              return@addOnSuccessListener
++            } else {
++              promise.resolve(LocationResponse(location))
+             }
+-
+-            promise.resolve(LocationResponse(location))
+-          }
+-          .addOnFailureListener {
+-            promise.reject(LocationRequestRejectedException(it))
+-          }
+-          .addOnCanceledListener {
+-            promise.reject(LocationRequestCancelledException())
+           }
++        } else {
++          // Pre-API 30: Use requestSingleUpdate
++          @Suppress("DEPRECATION")
++          locationManager.requestSingleUpdate(provider, object : LocationListener {
++            override fun onLocationChanged(location: Location) {
++              promise.resolve(LocationResponse(location))
++            }
++            @Deprecated("Deprecated in Java")
++            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
++            override fun onProviderEnabled(provider: String) {}
++            override fun onProviderDisabled(provider: String) {
++              promise.reject(CurrentLocationIsUnavailableException())
++            }
++          }, Looper.getMainLooper())
++        }
+       } catch (e: SecurityException) {
+         promise.reject(LocationRequestRejectedException(e))
+       }
+     }
+ 
+-    fun requestContinuousUpdates(locationModule: LocationModule, locationRequest: LocationRequest, watchId: Int, promise: Promise) {
++    fun requestContinuousUpdates(locationModule: LocationModule, request: NativeLocationRequest, watchId: Int, promise: Promise) {
+       locationModule.requestLocationUpdates(
+-        locationRequest,
++        request,
+         watchId,
+         object : LocationRequestCallbacks {
+           override fun onLocationChanged(location: Location) {
+@@ -106,6 +122,40 @@ class LocationHelpers {
+       )
+     }
+ 
++    /**
++     * Gets the best available provider based on accuracy requirements.
++     */
++    fun getBestAvailableProvider(locationManager: LocationManager, accuracy: Int): String? {
++      val wantHighAccuracy = accuracy >= LocationModule.ACCURACY_HIGH
++      val criteria = Criteria().apply {
++        this.accuracy = if (wantHighAccuracy) Criteria.ACCURACY_FINE else Criteria.ACCURACY_COARSE
++        powerRequirement = if (wantHighAccuracy) Criteria.POWER_HIGH else Criteria.POWER_LOW
++      }
++      val best = locationManager.getBestProvider(criteria, true)
++      if (best != null) return best
++
++      // Fallback: try GPS first, then network
++      if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
++        return LocationManager.GPS_PROVIDER
++      }
++      if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
++        return LocationManager.NETWORK_PROVIDER
++      }
++      return null
++    }
++
++    /**
++     * Maps accuracy level to preferred location provider.
++     */
++    private fun mapAccuracyToProvider(accuracy: Int): String {
++      return when (accuracy) {
++        LocationModule.ACCURACY_BEST_FOR_NAVIGATION,
++        LocationModule.ACCURACY_HIGHEST,
++        LocationModule.ACCURACY_HIGH -> LocationManager.GPS_PROVIDER
++        else -> LocationManager.NETWORK_PROVIDER
++      }
++    }
++
+     private fun mapOptionsToLocationParams(options: LocationOptions): LocationParams {
+       val accuracy = options.accuracy
+       val locationParams = buildLocationParamsForAccuracy(accuracy)
+@@ -120,15 +170,6 @@ class LocationHelpers {
+       return locationParams
+     }
+ 
+-    private fun mapAccuracyToPriority(accuracy: Int): Int {
+-      return when (accuracy) {
+-        LocationModule.ACCURACY_BEST_FOR_NAVIGATION, LocationModule.ACCURACY_HIGHEST, LocationModule.ACCURACY_HIGH -> Priority.PRIORITY_HIGH_ACCURACY
+-        LocationModule.ACCURACY_BALANCED, LocationModule.ACCURACY_LOW -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+-        LocationModule.ACCURACY_LOWEST -> Priority.PRIORITY_LOW_POWER
+-        else -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+-      }
+-    }
+-
+     private fun buildLocationParamsForAccuracy(accuracy: Int): LocationParams {
+       return when (accuracy) {
+         LocationModule.ACCURACY_LOWEST -> LocationParams(accuracy = LocationAccuracy.LOWEST, distance = 3000f, interval = 10000)
+@@ -199,3 +240,14 @@ class LocationHelpers {
+ object AppForegroundedSingleton {
+   var isForegrounded = false
+ }
++
++/**
++ * Represents a location request using native Android LocationManager parameters.
++ * Replaces GMS LocationRequest.
++ */
++data class NativeLocationRequest(
++  val provider: String,
++  val interval: Long,
++  val distance: Float,
++  val accuracy: Int
++)
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt
+index 523d08f..e530f02 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/LocationModule.kt
+@@ -12,6 +12,7 @@ import android.hardware.SensorEventListener
+ import android.hardware.SensorManager
+ import android.location.Geocoder
+ import android.location.Location
++import android.location.LocationListener
+ import android.location.LocationManager
+ import android.os.Build
+ import android.os.Bundle
+@@ -20,16 +21,6 @@ import android.util.Log
+ import androidx.core.app.ActivityCompat
+ import androidx.core.location.LocationManagerCompat
+ import androidx.core.os.bundleOf
+-import com.google.android.gms.common.api.ApiException
+-import com.google.android.gms.common.api.CommonStatusCodes
+-import com.google.android.gms.common.api.ResolvableApiException
+-import com.google.android.gms.location.FusedLocationProviderClient
+-import com.google.android.gms.location.LocationAvailability
+-import com.google.android.gms.location.LocationCallback
+-import com.google.android.gms.location.LocationRequest
+-import com.google.android.gms.location.LocationResult
+-import com.google.android.gms.location.LocationServices
+-import com.google.android.gms.location.LocationSettingsRequest
+ import expo.modules.core.interfaces.ActivityEventListener
+ import expo.modules.core.interfaces.LifecycleEventListener
+ import expo.modules.core.interfaces.services.UIManager
+@@ -62,13 +53,13 @@ import kotlin.math.abs
+ 
+ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, ActivityEventListener {
+   private var mGeofield: GeomagneticField? = null
+-  private val mLocationCallbacks = HashMap<Int, LocationCallback>()
+-  private val mLocationRequests = HashMap<Int, LocationRequest>()
++  private val mLocationListeners = HashMap<Int, LocationListener>()
++  private val mLocationRequests = HashMap<Int, NativeLocationRequest>()
+   private var mPendingLocationRequests = ArrayList<LocationActivityResultListener>()
+   private lateinit var mContext: Context
+   private lateinit var mSensorManager: SensorManager
+   private lateinit var mUIManager: UIManager
+-  private lateinit var mLocationProvider: FusedLocationProviderClient
++  private lateinit var mLocationManager: LocationManager
+ 
+   private var mGravity: FloatArray = FloatArray(9)
+   private var mGeomagnetic: FloatArray = FloatArray(9)
+@@ -89,7 +80,7 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+     OnCreate {
+       mContext = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+       mUIManager = appContext.legacyModule<UIManager>() ?: throw MissingUIManagerException()
+-      mLocationProvider = LocationServices.getFusedLocationProviderClient(mContext)
++      mLocationManager = mContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+       mSensorManager = mContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+         ?: throw SensorManagerUnavailable()
+     }
+@@ -332,12 +323,10 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+   }
+ 
+   private fun getProviderStatus(): LocationProviderStatus {
+-    val manager = mContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+-
+-    val isGpsAvailable = manager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+-    val isNetworkAvailable = manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+-    val isLocationServicesEnabled = LocationManagerCompat.isLocationEnabled(manager)
+-    val isPassiveAvailable = manager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)
++    val isGpsAvailable = mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
++    val isNetworkAvailable = mLocationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
++    val isLocationServicesEnabled = LocationManagerCompat.isLocationEnabled(mLocationManager)
++    val isPassiveAvailable = mLocationManager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)
+ 
+     return LocationProviderStatus().apply {
+       backgroundModeEnabled = isLocationServicesEnabled
+@@ -394,25 +383,24 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+    * If you don't need an up-to-date location see `getLastKnownPosition`.
+    */
+   private fun getCurrentPositionAsync(options: LocationOptions, promise: Promise) {
+-    // Read options
+-    val locationRequest = LocationHelpers.prepareLocationRequest(options)
+-    val currentLocationRequest = LocationHelpers.prepareCurrentLocationRequest(options)
+-    val showUserSettingsDialog = options.mayShowUserSettingsDialog
+-
+     // Check for permissions
+     if (isMissingForegroundPermissions()) {
+       promise.reject(LocationUnauthorizedException())
+       return
+     }
++
++    val showUserSettingsDialog = options.mayShowUserSettingsDialog
++
+     if (LocationHelpers.hasNetworkProviderEnabled(mContext) || !showUserSettingsDialog) {
+-      LocationHelpers.requestSingleLocation(mLocationProvider, currentLocationRequest, promise)
++      LocationHelpers.requestSingleLocation(mLocationManager, options, promise)
+     } else {
++      val locationRequest = LocationHelpers.prepareLocationRequest(options)
+       addPendingLocationRequest(
+         locationRequest,
+         object : LocationActivityResultListener {
+           override fun onResult(resultCode: Int) {
+             if (resultCode == Activity.RESULT_OK) {
+-              LocationHelpers.requestSingleLocation(mLocationProvider, currentLocationRequest, promise)
++              LocationHelpers.requestSingleLocation(mLocationManager, options, promise)
+             } else {
+               promise.reject(LocationSettingsUnsatisfiedException())
+             }
+@@ -422,77 +410,79 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+     }
+   }
+ 
+-  fun requestLocationUpdates(locationRequest: LocationRequest, requestId: Int?, callbacks: LocationRequestCallbacks) {
+-    val locationProvider: FusedLocationProviderClient = mLocationProvider
++  fun requestLocationUpdates(request: NativeLocationRequest, requestId: Int?, callbacks: LocationRequestCallbacks) {
++    val provider = LocationHelpers.getBestAvailableProvider(mLocationManager, request.accuracy)
++    if (provider == null) {
++      callbacks.onRequestFailed(LocationUnavailableException())
++      return
++    }
+ 
+-    val locationCallback: LocationCallback = object : LocationCallback() {
+-      var isLocationAvailable = false
++    val locationListener = object : LocationListener {
++      override fun onLocationChanged(location: Location) {
++        callbacks.onLocationChanged(location)
++      }
+ 
+-      override fun onLocationResult(locationResult: LocationResult) {
+-        val location = locationResult.lastLocation
+-        if (location != null) {
++      override fun onLocationChanged(locations: MutableList<Location>) {
++        for (location in locations) {
+           callbacks.onLocationChanged(location)
+-        } else if (!isLocationAvailable) {
+-          callbacks.onLocationError(LocationUnavailableException())
+-        } else {
+-          callbacks.onRequestFailed(LocationUnknownException())
+         }
+       }
+ 
+-      override fun onLocationAvailability(locationAvailability: LocationAvailability) {
+-        isLocationAvailable = locationAvailability.isLocationAvailable
++      @Deprecated("Deprecated in Java")
++      override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
++
++      override fun onProviderEnabled(provider: String) {}
++
++      override fun onProviderDisabled(provider: String) {
++        callbacks.onLocationError(LocationUnavailableException())
+       }
+     }
+ 
+     if (requestId != null) {
+-      // Save location callback and request so we will be able to pause/resume receiving updates.
+-      mLocationCallbacks[requestId] = locationCallback
+-      mLocationRequests[requestId] = locationRequest
++      // Save location listener and request so we will be able to pause/resume receiving updates.
++      mLocationListeners[requestId] = locationListener
++      mLocationRequests[requestId] = request
+     }
+ 
+     try {
+-      locationProvider.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
++      mLocationManager.requestLocationUpdates(
++        provider,
++        request.interval,
++        request.distance,
++        locationListener,
++        Looper.getMainLooper()
++      )
+       callbacks.onRequestSuccess()
+     } catch (e: SecurityException) {
+       callbacks.onRequestFailed(LocationRequestRejectedException(e))
+     }
+   }
+ 
+-  private fun addPendingLocationRequest(locationRequest: LocationRequest, listener: LocationActivityResultListener) {
++  private fun addPendingLocationRequest(request: NativeLocationRequest, listener: LocationActivityResultListener) {
+     // Add activity result listener to an array of pending requests.
+     mPendingLocationRequests.add(listener)
+ 
+     // If it's the first pending request, let's ask the user to turn on high accuracy location.
+     if (mPendingLocationRequests.size == 1) {
+-      resolveUserSettingsForRequest(locationRequest)
++      resolveUserSettingsForRequest()
+     }
+   }
+ 
+   /**
+-   * Triggers system's dialog to ask the user to enable settings required for given location request.
++   * Checks if location providers are enabled and resolves pending requests.
++   * Without GMS, we can't show the settings dialog, so we just check and resolve.
+    */
+-  private fun resolveUserSettingsForRequest(locationRequest: LocationRequest) {
+-    val builder = LocationSettingsRequest.Builder().addLocationRequest(locationRequest)
+-    val client = LocationServices.getSettingsClient(mContext)
+-    val task = client.checkLocationSettings(builder.build())
+-    task.addOnSuccessListener {
+-      // All location settings requirements are satisfied.
++  private fun resolveUserSettingsForRequest() {
++    if (LocationHelpers.isAnyProviderAvailable(mContext)) {
+       executePendingRequests(Activity.RESULT_OK)
+-    }
+-    task.addOnFailureListener { e: Exception ->
+-      val statusCode = (e as ApiException).statusCode
+-      if (statusCode == CommonStatusCodes.RESOLUTION_REQUIRED) {
+-        // Location settings are not satisfied, but this can be fixed by showing the user a dialog.
+-        // Show the dialog by calling startResolutionForResult(), and check the result in onActivityResult().
+-        try {
+-          val resolvable = e as ResolvableApiException
+-          mUIManager.registerActivityEventListener(this@LocationModule)
+-          resolvable.startResolutionForResult(appContext.throwingActivity, CHECK_SETTINGS_REQUEST_CODE)
+-        } catch (e: Throwable) {
+-          // Ignore the error.
+-          executePendingRequests(Activity.RESULT_CANCELED)
+-        }
+-      } else { // Location settings are not satisfied. However, we have no way to fix the settings so we won't show the dialog.
++    } else {
++      // Try to open location settings
++      try {
++        val intent = Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
++        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++        mUIManager.registerActivityEventListener(this@LocationModule)
++        mContext.startActivity(intent)
++      } catch (e: Throwable) {
+         executePendingRequests(Activity.RESULT_CANCELED)
+       }
+     }
+@@ -507,15 +497,14 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+   }
+ 
+   private fun startHeadingUpdate() {
+-    val locationManager = mContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+     if (ActivityCompat.checkSelfPermission(mContext, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+       ActivityCompat.checkSelfPermission(mContext, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+     ) {
+       return
+     }
+     val lastLocation =
+-      locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+-        ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
++      mLocationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
++        ?: mLocationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+ 
+     if (lastLocation != null) {
+       mGeofield = GeomagneticField(
+@@ -525,25 +514,44 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+         System.currentTimeMillis()
+       )
+     } else {
+-      val locationRequest = LocationRequest.Builder(
+-        LocationRequest.PRIORITY_HIGH_ACCURACY,
+-        0L
+-      ).setMaxUpdates(1)
+-        .build()
+-
+-      val locationCallback = object : LocationCallback() {
+-        override fun onLocationResult(locationResult: LocationResult) {
+-          locationResult.lastLocation?.let {
+-            mGeofield = GeomagneticField(
+-              it.latitude.toFloat(),
+-              it.longitude.toFloat(),
+-              it.altitude.toFloat(),
+-              System.currentTimeMillis()
+-            )
++      // Request a single location update for heading calibration
++      try {
++        val provider = LocationHelpers.getBestAvailableProvider(mLocationManager, ACCURACY_HIGH) ?: return
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
++          mLocationManager.getCurrentLocation(
++            provider,
++            null,
++            { runnable -> runnable.run() }
++          ) { location: Location? ->
++            location?.let {
++              mGeofield = GeomagneticField(
++                it.latitude.toFloat(),
++                it.longitude.toFloat(),
++                it.altitude.toFloat(),
++                System.currentTimeMillis()
++              )
++            }
+           }
++        } else {
++          @Suppress("DEPRECATION")
++          mLocationManager.requestSingleUpdate(provider, object : LocationListener {
++            override fun onLocationChanged(location: Location) {
++              mGeofield = GeomagneticField(
++                location.latitude.toFloat(),
++                location.longitude.toFloat(),
++                location.altitude.toFloat(),
++                System.currentTimeMillis()
++              )
++            }
++            @Deprecated("Deprecated in Java")
++            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
++            override fun onProviderEnabled(provider: String) {}
++            override fun onProviderDisabled(provider: String) {}
++          }, Looper.getMainLooper())
+         }
++      } catch (e: SecurityException) {
++        Log.w(TAG, "Could not get location for heading calibration: ${e.message}")
+       }
+-      mLocationProvider.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+     }
+     mSensorManager.registerListener(
+       this,
+@@ -634,30 +642,38 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+     if (Geocoder.isPresent() && !isMissingForegroundPermissions()) {
+       mGeocoderPaused = true
+     }
+-    for (requestId in mLocationCallbacks.keys) {
++    for (requestId in mLocationListeners.keys) {
+       pauseLocationUpdatesForRequest(requestId)
+     }
+   }
+ 
+   private fun pauseLocationUpdatesForRequest(requestId: Int) {
+-    val locationCallback = mLocationCallbacks[requestId]
+-    if (locationCallback != null) {
+-      mLocationProvider.removeLocationUpdates(locationCallback)
++    val locationListener = mLocationListeners[requestId]
++    if (locationListener != null) {
++      mLocationManager.removeUpdates(locationListener)
+     }
+   }
+ 
+   private fun removeLocationUpdatesForRequest(requestId: Int) {
+     pauseLocationUpdatesForRequest(requestId)
+-    mLocationCallbacks.remove(requestId)
++    mLocationListeners.remove(requestId)
+     mLocationRequests.remove(requestId)
+   }
+ 
+   private fun resumeLocationUpdates() {
+-    for (requestId in mLocationCallbacks.keys) {
+-      val locationCallback = mLocationCallbacks[requestId] ?: return
+-      val locationRequest = mLocationRequests[requestId] ?: return
++    for (requestId in mLocationListeners.keys) {
++      val locationListener = mLocationListeners[requestId] ?: return
++      val request = mLocationRequests[requestId] ?: return
+       try {
+-        mLocationProvider.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
++        val provider = LocationHelpers.getBestAvailableProvider(mLocationManager, request.accuracy)
++          ?: continue
++        mLocationManager.requestLocationUpdates(
++          provider,
++          request.interval,
++          request.distance,
++          locationListener,
++          Looper.myLooper()
++        )
+       } catch (e: SecurityException) {
+         Log.e(TAG, "Error occurred while resuming location updates: $e")
+       }
+@@ -668,15 +684,12 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+    * Gets the best most recent location found by the provider.
+    */
+   private suspend fun getLastKnownLocation(): Location? {
+-    return suspendCoroutine { continuation ->
+-      try {
+-        mLocationProvider.lastLocation
+-          .addOnSuccessListener { location: Location? -> continuation.resume(location) }
+-          .addOnCanceledListener { continuation.resume(null) }
+-          .addOnFailureListener { continuation.resume(null) }
+-      } catch (e: SecurityException) {
+-        continuation.resume(null)
+-      }
++    return try {
++      mLocationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
++        ?: mLocationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
++        ?: mLocationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
++    } catch (e: SecurityException) {
++      null
+     }
+   }
+ 
+@@ -797,10 +810,6 @@ class LocationModule : Module(), LifecycleEventListener, SensorEventListener, Ac
+     }
+   }
+ 
+-  /**
+-   * Helper method that lazy-loads the location provider for the context that the module was created.
+-   */
+-
+   companion object {
+     internal val TAG = LocationModule::class.java.simpleName
+     private const val LOCATION_EVENT_NAME = "Expo.locationChanged"
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt
+index cafc11b..448c090 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt
+@@ -8,12 +8,6 @@ import android.content.Intent
+ import android.os.Bundle
+ import android.os.PersistableBundle
+ import android.util.Log
+-import com.google.android.gms.location.Geofence
+-import com.google.android.gms.location.GeofenceStatusCodes
+-import com.google.android.gms.location.GeofencingClient
+-import com.google.android.gms.location.GeofencingEvent
+-import com.google.android.gms.location.GeofencingRequest
+-import com.google.android.gms.location.LocationServices
+ import expo.modules.interfaces.taskManager.TaskConsumer
+ import expo.modules.interfaces.taskManager.TaskConsumerInterface
+ import expo.modules.interfaces.taskManager.TaskInterface
+@@ -24,222 +18,43 @@ import expo.modules.location.records.GeofencingRegionState
+ import expo.modules.location.LocationModule
+ import java.util.UUID
+ 
++/**
++ * Geofencing task consumer stub.
++ * Client-side geofencing requires Google Play Services GeofencingClient.
++ * FindMe uses server-side geofencing (haversine distance), so this consumer
++ * is a no-op that logs a warning if called.
++ */
+ class GeofencingTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsInterface?) : TaskConsumer(context, taskManagerUtils), TaskConsumerInterface {
+   private var mTask: TaskInterface? = null
+-  private var mPendingIntent: PendingIntent? = null
+-  private var mGeofencingClient: GeofencingClient? = null
+-  private var mGeofencingRequest: GeofencingRequest? = null
+-  private var mGeofencingList: MutableList<Geofence> = ArrayList()
+-  private var mRegions: MutableMap<String, PersistableBundle> = HashMap()
+ 
+-  //region TaskConsumerInterface
+   override fun taskType(): String {
+     return "geofencing"
+   }
+ 
+   override fun didRegister(task: TaskInterface) {
+     mTask = task
+-    startGeofencing()
++    Log.w(TAG, "Client-side geofencing is not available without Google Play Services. Use server-side geofencing instead.")
+   }
+ 
+   override fun didUnregister() {
+-    stopGeofencing()
+     mTask = null
+-    mPendingIntent = null
+-    mGeofencingClient = null
+-    mGeofencingRequest = null
+-    mGeofencingList.clear()
+   }
+ 
+   override fun setOptions(options: Map<String, Any>) {
+     super.setOptions(options)
+-    stopGeofencing()
+-    startGeofencing()
++    Log.w(TAG, "Client-side geofencing is not available without Google Play Services.")
+   }
+ 
+   override fun didReceiveBroadcast(intent: Intent) {
+-    val event = GeofencingEvent.fromIntent(intent) ?: run {
+-      Log.w(TAG, "Received a null geofencing event. Ignoring")
+-      return
+-    }
+-
+-    if (event.hasError()) {
+-      val errorMessage = getErrorString(event.errorCode)
+-      val error = Error(errorMessage)
+-      mTask?.execute(null, error)
+-      return
+-    }
+-
+-    // Get region state and event type from given transition type.
+-    val geofenceTransition = event.geofenceTransition
+-    val regionState = regionStateForTransitionType(geofenceTransition)
+-    val eventType = eventTypeFromTransitionType(geofenceTransition)
+-    val triggeringGeofences = event.triggeringGeofences ?: return
+-
+-    for (geofence in triggeringGeofences) {
+-      mRegions[geofence.requestId]?.let {
+-        val data = PersistableBundle()
+-
+-        // Update region state in region bundle.
+-        it.putInt("state", regionState.ordinal)
+-        data.putInt("eventType", eventType)
+-        data.putPersistableBundle("region", it)
+-        val context = context.applicationContext
+-        taskManagerUtils.scheduleJob(context, mTask, listOf(data))
+-      }
+-    }
++    // No-op: GMS geofencing broadcasts will not be received
+   }
+ 
+   override fun didExecuteJob(jobService: JobService, params: JobParameters): Boolean {
+-    val task = mTask ?: return false
+-
+-    val data = taskManagerUtils.extractDataFromJobParams(params)
+-    for (item in data) {
+-      val bundle = Bundle()
+-      val region = Bundle()
+-      region.putAll(item.getPersistableBundle("region"))
+-      bundle.putInt("eventType", item.getInt("eventType"))
+-      bundle.putBundle("region", region)
+-
+-      task.execute(bundle, null) { jobService.jobFinished(params, false) }
+-    }
+-
+-    // Returning `true` indicates that the job is still running, but in async mode.
+-    // In that case we're obligated to call `jobService.jobFinished` as soon as the async block finishes.
+-    return true
+-  }
+-
+-  //endregion
+-  //region helpers
+-  private fun startGeofencing() {
+-    val context = context ?: run {
+-      Log.w(TAG, "The context has been abandoned")
+-      return
+-    }
+-
+-    if (!LocationHelpers.isAnyProviderAvailable(context)) {
+-      Log.w(TAG, "There is no location provider available")
+-      return
+-    }
+-    mRegions = HashMap()
+-    mGeofencingList = ArrayList()
+-
+-    // Create geofences from task options.
+-    val options = mTask?.options
+-      ?: throw GeofencingException("Task is null, can't start geofencing")
+-    val regions: List<HashMap<String, Any>> = (options["regions"] as ArrayList<*>).filterIsInstance<HashMap<String, Any>>()
+-
+-    for (region in regions) {
+-      val geofence = geofenceFromRegion(region)
+-      val regionIdentifier = geofence.requestId
+-
+-      // Make a bundle for the region to remember its attributes. Only request ID is public in Geofence object.
+-      mRegions[regionIdentifier] = bundleFromRegion(regionIdentifier, region)
+-
+-      // Add geofence to the list of observed regions.
+-      mGeofencingList.add(geofence)
+-    }
+-
+-    // Prepare pending intent, geofencing request and client.
+-    mPendingIntent = preparePendingIntent()
+-    mGeofencingRequest = prepareGeofencingRequest(mGeofencingList)
+-    mGeofencingClient = LocationServices.getGeofencingClient(getContext())
+-
+-    try {
+-      mPendingIntent?.let { pendingIntent ->
+-        mGeofencingRequest?.let { geofencingRequest ->
+-          mGeofencingClient?.addGeofences(geofencingRequest, pendingIntent)
+-        }
+-      }
+-    } catch (e: SecurityException) {
+-      Log.w(TAG, "Geofencing request has been rejected.", e)
+-    }
+-  }
+-
+-  private fun stopGeofencing() {
+-    mPendingIntent?.let {
+-      mGeofencingClient?.removeGeofences(it)
+-      it.cancel()
+-    }
+-  }
+-
+-  private fun prepareGeofencingRequest(geofences: List<Geofence>): GeofencingRequest {
+-    return GeofencingRequest.Builder()
+-      .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_EXIT)
+-      .addGeofences(geofences)
+-      .build()
+-  }
+-
+-  private fun preparePendingIntent(): PendingIntent {
+-    return taskManagerUtils.createTaskIntent(context, mTask)
+-  }
+-
+-  private fun getParamAsDouble(param: Any?, errorMessage: String): Double {
+-    return when (param) {
+-      is Double -> param
+-      is Float -> param.toDouble()
+-      is Int -> param.toDouble()
+-      is Long -> param.toDouble()
+-      is String -> param.toDoubleOrNull()
+-      else -> null
+-    } ?: throw GeofencingException(errorMessage)
+-  }
+-
+-  private fun geofenceFromRegion(region: Map<String, Any>): Geofence {
+-    val identifier = region["identifier"] as? String ?: UUID.randomUUID().toString()
+-    val radius = getParamAsDouble(region["radius"], "Region: radius: `${region["radius"]}` can't be cast to Double")
+-    val longitude = getParamAsDouble(region["longitude"], "Region: longitude: `${region["longitude"]}` can't be cast to Double")
+-    val latitude = getParamAsDouble(region["latitude"], "Region: latitude `${region["latitude"]}` can't be cast to Double")
+-    val notifyOnEnter = region["notifyOnEnter"] as? Boolean ?: true
+-    val notifyOnExit = region["notifyOnExit"] as? Boolean ?: true
+-    val transitionTypes = (if (notifyOnEnter) Geofence.GEOFENCE_TRANSITION_ENTER else 0) or if (notifyOnExit) Geofence.GEOFENCE_TRANSITION_EXIT else 0
+-    return Geofence.Builder()
+-      .setRequestId(identifier)
+-      .setCircularRegion(latitude, longitude, radius.toFloat())
+-      .setExpirationDuration(Geofence.NEVER_EXPIRE)
+-      .setTransitionTypes(transitionTypes)
+-      .build()
+-  }
+-
+-  private fun bundleFromRegion(identifier: String, region: Map<String, Any>): PersistableBundle {
+-    return PersistableBundle().apply {
+-      val radius = getParamAsDouble(region["radius"], "Region: radius: `${region["radius"]}` can't be cast to Double")
+-      val longitude = getParamAsDouble(region["longitude"], "Region: longitude: `${region["longitude"]}` can't be cast to Double")
+-      val latitude = getParamAsDouble(region["latitude"], "Region: latitude: `${region["latitude"]}` can't be cast to Double")
+-      putString("identifier", identifier)
+-      putDouble("radius", radius)
+-      putDouble("latitude", latitude)
+-      putDouble("longitude", longitude)
+-      putInt("state", GeofencingRegionState.UNKNOWN.ordinal)
+-    }
+-  }
+-
+-  private fun regionStateForTransitionType(transitionType: Int): GeofencingRegionState {
+-    return when (transitionType) {
+-      Geofence.GEOFENCE_TRANSITION_ENTER, Geofence.GEOFENCE_TRANSITION_DWELL -> GeofencingRegionState.INSIDE
+-      Geofence.GEOFENCE_TRANSITION_EXIT -> GeofencingRegionState.OUTSIDE
+-      else -> GeofencingRegionState.UNKNOWN
+-    }
+-  }
+-
+-  private fun eventTypeFromTransitionType(transitionType: Int): Int {
+-    return when (transitionType) {
+-      Geofence.GEOFENCE_TRANSITION_ENTER -> LocationModule.GEOFENCING_EVENT_ENTER
+-      Geofence.GEOFENCE_TRANSITION_EXIT -> LocationModule.GEOFENCING_EVENT_EXIT
+-      else -> 0
+-    }
++    jobService.jobFinished(params, false)
++    return false
+   }
+ 
+   companion object {
+     private const val TAG = "GeofencingTaskConsumer"
+-
+-    private fun getErrorString(errorCode: Int): String {
+-      return when (errorCode) {
+-        GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE -> "Geofencing not available."
+-        GeofenceStatusCodes.GEOFENCE_TOO_MANY_GEOFENCES -> "Too many geofences."
+-        GeofenceStatusCodes.GEOFENCE_TOO_MANY_PENDING_INTENTS -> "Too many pending intents."
+-        else -> "Unknown geofencing error."
+-      }
+-    } //endregion
+   }
+ }
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
+index b4f6c06..2c386ec 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt
+@@ -8,15 +8,14 @@ import android.content.Context
+ import android.content.Intent
+ import android.content.ServiceConnection
+ import android.location.Location
++import android.location.LocationListener
++import android.location.LocationManager
+ import android.os.Build
+ import android.os.Bundle
+ import android.os.IBinder
++import android.os.Looper
+ import android.os.PersistableBundle
+ import android.util.Log
+-import com.google.android.gms.location.FusedLocationProviderClient
+-import com.google.android.gms.location.LocationRequest
+-import com.google.android.gms.location.LocationResult
+-import com.google.android.gms.location.LocationServices
+ import expo.modules.core.arguments.MapArguments
+ import expo.modules.core.arguments.ReadableArguments
+ import expo.modules.core.interfaces.LifecycleEventListener
+@@ -27,6 +26,7 @@ import expo.modules.interfaces.taskManager.TaskInterface
+ import expo.modules.interfaces.taskManager.TaskManagerUtilsInterface
+ import expo.modules.location.AppForegroundedSingleton
+ import expo.modules.location.LocationHelpers
++import expo.modules.location.NativeLocationRequest
+ import expo.modules.location.records.LocationOptions
+ import expo.modules.location.records.LocationResponse
+ import expo.modules.location.services.LocationTaskService
+@@ -37,15 +37,16 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+   private var mTask: TaskInterface? = null
+   private var mPendingIntent: PendingIntent? = null
+   private var mService: LocationTaskService? = null
+-  private var mLocationRequest: LocationRequest? = null
++  private var mLocationRequest: NativeLocationRequest? = null
+   private var mLastReportedLocation: Location? = null
+   private var mDeferredDistance = 0.0
+   private val mDeferredLocations: MutableList<Location> = ArrayList()
+ 
+   // Apps start in foreground state; lifecycle callbacks update this after initialization
+   private var mIsHostPaused = false
+-  private val mLocationClient: FusedLocationProviderClient by lazy {
+-    LocationServices.getFusedLocationProviderClient(context)
++  private var mLocationListener: LocationListener? = null
++  private val mLocationManager: LocationManager by lazy {
++    context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+   }
+ 
+   //region TaskConsumerInterface
+@@ -80,14 +81,23 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+ 
+   override fun didReceiveBroadcast(intent: Intent) {
+     mTask ?: return
+-    val result = LocationResult.extractResult(intent)
+-    if (result != null) {
+-      handleLocationUpdate(result.locations)
++
++    // Extract location from the broadcast intent
++    val location: Location? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++      intent.getParcelableExtra(LocationManager.KEY_LOCATION_CHANGED, Location::class.java)
++    } else {
++      @Suppress("DEPRECATION")
++      intent.getParcelableExtra(LocationManager.KEY_LOCATION_CHANGED)
++    }
++
++    if (location != null) {
++      handleLocationUpdate(listOf(location))
+     } else {
++      // Fallback: try to get last known location
+       try {
+-        mLocationClient.lastLocation.addOnCompleteListener { task ->
+-          task.result?.let { handleLocationUpdate(listOf(it)) }
+-        }
++        val lastLocation = mLocationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
++          ?: mLocationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
++        lastLocation?.let { handleLocationUpdate(listOf(it)) }
+       } catch (e: SecurityException) {
+         Log.e(TAG, "Cannot get last location: " + e.message)
+       }
+@@ -148,29 +158,73 @@ class LocationTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtilsI
+       return
+     }
+     mLocationRequest = LocationHelpers.prepareLocationRequest(LocationOptions(task.options))
+-    mPendingIntent = preparePendingIntent()
+ 
+-    val locationRequest = mLocationRequest ?: run {
++    val request = mLocationRequest ?: run {
+       Log.w(TAG, "Could not find a location request for the location update")
+       return
+     }
++
++    val provider = LocationHelpers.getBestAvailableProvider(mLocationManager, request.accuracy)
++    if (provider == null) {
++      Log.w(TAG, "No suitable location provider available")
++      return
++    }
++
++    // Use PendingIntent for background updates (survives process death)
++    mPendingIntent = preparePendingIntent()
+     val intent = mPendingIntent ?: run {
+       Log.w(TAG, "Could not find intent for the location update")
+       return
+     }
+ 
+     try {
+-      mLocationClient.requestLocationUpdates(locationRequest, intent)
++      mLocationManager.requestLocationUpdates(
++        provider,
++        request.interval,
++        request.distance,
++        intent
++      )
+     } catch (e: SecurityException) {
+       Log.w(TAG, "Location request has been rejected.", e)
+     }
++
++    // Also register a LocationListener for foreground updates (more reliable callbacks)
++    try {
++      mLocationListener = object : LocationListener {
++        override fun onLocationChanged(location: Location) {
++          handleLocationUpdate(listOf(location))
++        }
++
++        override fun onLocationChanged(locations: MutableList<Location>) {
++          handleLocationUpdate(locations)
++        }
++
++        @Deprecated("Deprecated in Java")
++        override fun onStatusChanged(p: String?, status: Int, extras: Bundle?) {}
++        override fun onProviderEnabled(p: String) {}
++        override fun onProviderDisabled(p: String) {}
++      }
++      mLocationManager.requestLocationUpdates(
++        provider,
++        request.interval,
++        request.distance,
++        mLocationListener!!,
++        Looper.getMainLooper()
++      )
++    } catch (e: SecurityException) {
++      Log.w(TAG, "Location listener request has been rejected.", e)
++    }
+   }
+ 
+   private fun stopLocationUpdates() {
+     mPendingIntent?.let {
+-      mLocationClient.removeLocationUpdates(it)
++      mLocationManager.removeUpdates(it)
+       it.cancel()
+     }
++    mLocationListener?.let {
++      mLocationManager.removeUpdates(it)
++    }
++    mLocationListener = null
+   }
+ 
+   private fun maybeStartForegroundService() {
