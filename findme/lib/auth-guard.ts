@@ -13,6 +13,9 @@ export interface AuthenticatedUser {
 /**
  * Authenticate a request using either NextAuth session or JWT Bearer token.
  * Returns the authenticated user or a NextResponse error.
+ *
+ * For JWT tokens (mobile), checks that the token was issued after the user's
+ * last password change — tokens issued before a password change are rejected.
  */
 export async function authenticateRequest(
   req: NextRequest
@@ -22,10 +25,29 @@ export async function authenticateRequest(
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     const payload = verifyJwt(token);
-    if (payload) {
-      return { id: payload.userId, email: payload.email, role: payload.role };
+    if (!payload) {
+      return apiError("Invalid or expired token", 401);
     }
-    return apiError("Invalid or expired token", 401);
+
+    // Check if token was issued before password change (session invalidation)
+    if (payload.iat) {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: payload.userId },
+          select: { passwordChangedAt: true },
+        });
+        if (user?.passwordChangedAt) {
+          const changedAtSec = Math.floor(user.passwordChangedAt.getTime() / 1000);
+          if (payload.iat < changedAtSec) {
+            return apiError("Token invalidated by password change. Please sign in again.", 401);
+          }
+        }
+      } catch {
+        // If DB check fails, allow the token (don't break auth on transient DB errors)
+      }
+    }
+
+    return { id: payload.userId, email: payload.email, role: payload.role };
   }
 
   // Try NextAuth session (web dashboard)

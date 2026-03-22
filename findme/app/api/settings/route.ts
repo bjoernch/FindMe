@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
 import { settingsUpdateSchema } from "@/lib/validations";
+import { sendEmail } from "@/lib/email";
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -29,6 +30,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const updateData: Record<string, unknown> = {};
+    let passwordChanged = false;
 
     if (name) {
       updateData.name = name;
@@ -45,12 +47,33 @@ export async function PATCH(req: NextRequest) {
       }
 
       updateData.passwordHash = await bcrypt.hash(newPassword, 12);
+      updateData.passwordChangedAt = new Date();
+      passwordChanged = true;
     }
 
     const updatedUser = await prisma.user.update({
       where: { id: authResult.id },
       data: updateData,
     });
+
+    // Send notification email about password change
+    if (passwordChanged) {
+      log.info("settings", `Password changed for user ${authResult.email}`);
+      sendEmail({
+        to: user.email,
+        subject: "FindMe: Your password was changed",
+        html: `
+          <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto;">
+            <h2 style="color: #3b82f6;">Password Changed</h2>
+            <p>Your FindMe password was changed on ${new Date().toLocaleString()}.</p>
+            <p>If you did not make this change, please reset your password immediately or contact your server administrator.</p>
+            <p style="color: #666; font-size: 12px; margin-top: 24px;">
+              This is an automated security notification from FindMe.
+            </p>
+          </div>
+        `,
+      }).catch(() => {}); // Fire-and-forget, don't block the response
+    }
 
     // Handle data retention
     if (retentionDays) {
@@ -72,7 +95,8 @@ export async function PATCH(req: NextRequest) {
       });
 
       return apiSuccess({
-        message: "Settings updated",
+        message: passwordChanged ? "Password changed. Please sign in again on all devices." : "Settings updated",
+        passwordChanged,
         locationsDeleted: deleted.count,
         user: {
           id: updatedUser.id,
@@ -86,7 +110,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     return apiSuccess({
-      message: "Settings updated",
+      message: passwordChanged ? "Password changed. Please sign in again on all devices." : "Settings updated",
+      passwordChanged,
       user: {
         id: updatedUser.id,
         email: updatedUser.email,

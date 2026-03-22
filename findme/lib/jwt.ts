@@ -12,6 +12,7 @@ export interface JwtPayload {
   userId: string;
   email: string;
   role: string;
+  iat?: number;
 }
 
 export function signJwt(payload: JwtPayload, expiresInSeconds = 7 * 24 * 60 * 60): string {
