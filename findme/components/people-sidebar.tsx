@@ -41,7 +41,7 @@ function DeviceAddress({ lat, lng }: { lat?: number; lng?: number }) {
   const address = useAddress(lat, lng);
   if (!lat || !lng) return null;
   return (
-    <span className="ml-2 truncate max-w-[140px]" title={address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}>
+    <span className="ml-2 truncate max-w-[50%]" title={address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}>
       {address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`}
     </span>
   );
@@ -170,7 +170,7 @@ export function PeopleSidebar({
       )}
 
       <div
-        className={`absolute top-0 left-0 h-full bg-card/95 backdrop-blur border-r border-edge z-40 transition-transform duration-200 w-72 flex flex-col ${
+        className={`absolute top-0 left-0 h-full bg-card/95 backdrop-blur border-r border-edge z-40 transition-transform duration-200 w-[85vw] max-w-72 flex flex-col ${
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
@@ -378,7 +378,7 @@ export function PeopleSidebar({
                           e.stopPropagation();
                           onToggleVisibility(device.id);
                         }}
-                        className={`text-xs px-1.5 py-0.5 rounded ${
+                        className={`text-xs px-2.5 py-1.5 rounded min-h-[32px] ${
                           hidden
                             ? "bg-hover text-sub"
                             : "bg-input text-heading"

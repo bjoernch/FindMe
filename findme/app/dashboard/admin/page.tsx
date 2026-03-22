@@ -220,14 +220,14 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="p-6 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
         <div className="text-sub">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold text-heading mb-6">Administration</h1>
 
       {/* Action messages */}

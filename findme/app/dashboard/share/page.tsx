@@ -55,6 +55,15 @@ export default function SharePage() {
     }
   }
 
+  async function deleteShare(id: string) {
+    try {
+      await fetch(`/api/share?id=${id}&permanent=true`, { method: "DELETE" });
+      fetchShares();
+    } catch (err) {
+      console.error("Failed to delete share:", err);
+    }
+  }
+
   async function copyToClipboard(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -86,7 +95,7 @@ export default function SharePage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold text-heading mb-6">Share Location</h1>
 
       {/* Create share */}
@@ -99,15 +108,15 @@ export default function SharePage() {
           login required.
         </p>
 
-        <div className="flex items-end gap-3">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex-1">
             <label className="block text-sm text-sub mb-1">
               Expiration
             </label>
             <select
               value={expiry}
               onChange={(e) => setExpiry(e.target.value as ShareExpiry)}
-              className="bg-input border border-edge-bold rounded-lg px-4 py-2.5 text-heading focus:outline-none focus:border-blue-500"
+              className="w-full bg-input border border-edge-bold rounded-lg px-4 py-2.5 text-heading focus:outline-none focus:border-blue-500"
             >
               <option value="1h">1 hour</option>
               <option value="24h">24 hours</option>
@@ -117,7 +126,7 @@ export default function SharePage() {
           </div>
           <button
             onClick={createShare}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm transition-colors w-full sm:w-auto"
           >
             Create Link
           </button>
@@ -166,41 +175,51 @@ export default function SharePage() {
             return (
               <div
                 key={share.id}
-                className="p-4 border-b border-edge/50 flex items-center justify-between"
+                className="p-4 border-b border-edge/50"
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        share.isActive && !expired
-                          ? "bg-green-400"
-                          : "bg-gray-600"
-                      }`}
-                    />
-                    <span className="text-sm text-heading font-mono">
-                      ...{share.shareToken.slice(-8)}
-                    </span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          share.isActive && !expired
+                            ? "bg-green-400"
+                            : "bg-gray-600"
+                        }`}
+                      />
+                      <span className="text-sm text-heading font-mono truncate">
+                        ...{share.shareToken.slice(-8)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-hint mt-1">
+                      Created {new Date(share.createdAt).toLocaleString()}{" "}
+                      &middot; {formatExpiry(share.expiresAt)}
+                    </p>
                   </div>
-                  <p className="text-xs text-hint mt-1">
-                    Created {new Date(share.createdAt).toLocaleString()}{" "}
-                    &middot; {formatExpiry(share.expiresAt)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => copyToClipboard(shareUrl)}
-                    className="text-link hover:text-link-hover text-sm"
-                  >
-                    {copied === shareUrl ? "Copied!" : "Copy"}
-                  </button>
-                  {share.isActive && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {share.isActive && !expired && (
+                      <button
+                        onClick={() => copyToClipboard(shareUrl)}
+                        className="text-link hover:text-link-hover text-sm px-2 py-1.5"
+                      >
+                        {copied === shareUrl ? "Copied!" : "Copy"}
+                      </button>
+                    )}
+                    {share.isActive && (
+                      <button
+                        onClick={() => revokeShare(share.id)}
+                        className="text-warn-fg hover:text-warn-fg/80 text-sm px-2 py-1.5"
+                      >
+                        Revoke
+                      </button>
+                    )}
                     <button
-                      onClick={() => revokeShare(share.id)}
-                      className="text-danger-fg hover:text-danger-fg text-sm"
+                      onClick={() => deleteShare(share.id)}
+                      className="text-danger-fg hover:text-danger-fg/80 text-sm px-2 py-1.5"
                     >
-                      Revoke
+                      Delete
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             );

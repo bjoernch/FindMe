@@ -99,6 +99,7 @@ export async function DELETE(req: NextRequest) {
 
     const { searchParams } = req.nextUrl;
     const id = searchParams.get("id");
+    const permanent = searchParams.get("permanent") === "true";
 
     if (!id) {
       return apiError("Share ID required", 400);
@@ -110,6 +111,11 @@ export async function DELETE(req: NextRequest) {
 
     if (!share) {
       return apiError("Share not found", 404);
+    }
+
+    if (permanent) {
+      await prisma.share.delete({ where: { id } });
+      return apiSuccess({ message: "Share deleted" });
     }
 
     await prisma.share.update({

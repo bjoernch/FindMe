@@ -404,7 +404,7 @@ export function LocationMap({
       <button
         onClick={() => setShowPicker(!showPicker)}
         style={{
-          width: 42, height: 42, borderRadius: "50%",
+          width: 48, height: 48, borderRadius: "50%",
           background: "rgba(0,0,0,0.65)", border: "none", cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center",
           color: "#fff", fontSize: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.3)",

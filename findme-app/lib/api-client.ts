@@ -471,6 +471,12 @@ export class FindMeClient {
     });
   }
 
+  async deleteShareLink(id: string): Promise<ApiResponse<{ message: string }>> {
+    return this.request<{ message: string }>(`/api/share?id=${id}&permanent=true`, {
+      method: "DELETE",
+    });
+  }
+
   // ── Avatar ──────────────────────────────────────────────────
 
   async uploadAvatar(base64: string): Promise<ApiResponse<{ avatar: string }>> {

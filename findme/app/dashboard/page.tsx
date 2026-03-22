@@ -101,7 +101,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-52px)] relative">
+    <div className="h-[calc(100dvh-52px)] relative">
       {/* Top-right controls */}
       <div className="absolute top-3 right-3 z-50 flex gap-2">
         <button
@@ -161,7 +161,7 @@ export default function DashboardPage() {
       </Suspense>
 
       {/* Map */}
-      <div className="h-full md:ml-72">
+      <div className="h-full md:ml-72 ml-0">
         <LocationMap
           devices={devices}
           people={people}

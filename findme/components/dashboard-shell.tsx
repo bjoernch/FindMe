@@ -102,15 +102,15 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
             )}
           </nav>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={cycleTheme}
-            className="text-sm text-sub hover:text-heading bg-input px-2.5 py-1.5 rounded-lg transition-colors"
+            className="text-sm text-sub hover:text-heading bg-input px-2 py-1.5 rounded-lg transition-colors"
             title={`Theme: ${themeLabel}`}
           >
             {themeIcon}
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {user.avatar ? (
               <Image
                 src={user.avatar}
@@ -121,19 +121,19 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
               />
             ) : (
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                 style={{ backgroundColor: getAvatarColor(user.name || user.email) }}
               >
                 {getInitials(user.name || user.email)}
               </div>
             )}
-            <span className="text-sm text-sub hidden sm:block">
+            <span className="text-sm text-sub hidden sm:block truncate max-w-[100px]">
               {user.name}
             </span>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/auth" })}
-            className="text-sm text-sub hover:text-heading bg-input px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs sm:text-sm text-sub hover:text-heading bg-input px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
           >
             Sign out
           </button>

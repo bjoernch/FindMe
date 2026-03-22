@@ -96,9 +96,9 @@ export default function HistoryDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [datePreset, setDatePreset] = useState<DatePreset>("today");
-  const [fromDate, setFromDate] = useState(() => getPresetDates("today").from);
-  const [toDate, setToDate] = useState(() => getPresetDates("today").to);
+  const [datePreset, setDatePreset] = useState<DatePreset>("7days");
+  const [fromDate, setFromDate] = useState(() => getPresetDates("7days").from);
+  const [toDate, setToDate] = useState(() => getPresetDates("7days").to);
   const [selectedPoint, setSelectedPoint] = useState<LocationData | null>(null);
   const [historyMode, setHistoryMode] = useState<HistoryMode>("device");
   const [people, setPeople] = useState<SharedPerson[]>([]);
@@ -232,11 +232,11 @@ export default function HistoryDashboardPage() {
   const stats = computeTripStats(locations);
 
   if (loading) {
-    return <div className="p-6 max-w-6xl mx-auto"><div className="text-sub">Loading...</div></div>;
+    return <div className="p-4 sm:p-6 max-w-6xl mx-auto"><div className="text-sub">Loading...</div></div>;
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-heading mb-6">Location History</h1>
 
       {/* Controls */}

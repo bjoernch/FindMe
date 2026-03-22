@@ -69,7 +69,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
   const [error, setError] = useState<string | null>(null);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 1);
+    d.setDate(d.getDate() - 7);
     return d.toISOString().slice(0, 16);
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 16));
@@ -168,7 +168,7 @@ export default function HistoryPage({ params }: { params: Promise<{ id: string }
   const stats = computeTripStats(locations);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <Link href="/dashboard/devices" className="text-sub hover:text-heading">&larr; Devices</Link>
         <h1 className="text-2xl font-bold text-heading">Location History</h1>

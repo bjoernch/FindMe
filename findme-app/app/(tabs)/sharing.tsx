@@ -77,13 +77,27 @@ export default function SharingScreen() {
   }
 
   async function handleRevoke(link: ShareLink) {
-    Alert.alert("Revoke Link", "This will permanently disable this share link.", [
+    Alert.alert("Revoke Link", "This will disable this share link. It can still be deleted afterwards.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Revoke",
         style: "destructive",
         onPress: async () => {
           await apiClient.revokeShareLink(link.id);
+          await refetch();
+        },
+      },
+    ]);
+  }
+
+  async function handleDelete(link: ShareLink) {
+    Alert.alert("Delete Link", "This will permanently remove this share link. This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await apiClient.deleteShareLink(link.id);
           await refetch();
         },
       },
@@ -195,6 +209,11 @@ export default function SharingScreen() {
                   <Text style={styles.linkDate}>
                     Created {new Date(link.createdAt).toLocaleDateString()}
                   </Text>
+                </View>
+                <View style={styles.linkActions}>
+                  <TouchableOpacity style={styles.actionButton} onPress={() => handleDelete(link)}>
+                    <Ionicons name="trash-outline" size={20} color={colors.error} />
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}
