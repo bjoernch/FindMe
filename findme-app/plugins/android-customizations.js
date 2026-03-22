@@ -181,51 +181,6 @@ function withNetworkSecurityConfig(config) {
   return config;
 }
 
-/**
- * Exclude unused icon font files from the APK.
- * Only Ionicons and MaterialCommunityIcons are used.
- * Also enable useLegacyPackaging to compress native libs (saves ~7MB).
- */
-function withFontAndSizeOptimizations(config) {
-  return withAppBuildGradle(config, (mod) => {
-    let contents = mod.modResults.contents;
-
-    // Add packagingOptions to exclude unused fonts and enable legacy compression
-    if (!contents.includes("pickFirst")) {
-      contents = contents.replace(
-        /(android\s*\{)/,
-        `$1
-    packagingOptions {
-        // Exclude unused icon font files (~2.6MB savings)
-        exclude 'assets/fonts/AntDesign.ttf'
-        exclude 'assets/fonts/Entypo.ttf'
-        exclude 'assets/fonts/EvilIcons.ttf'
-        exclude 'assets/fonts/Feather.ttf'
-        exclude 'assets/fonts/FontAwesome.ttf'
-        exclude 'assets/fonts/FontAwesome5_Brands.ttf'
-        exclude 'assets/fonts/FontAwesome5_Regular.ttf'
-        exclude 'assets/fonts/FontAwesome5_Solid.ttf'
-        exclude 'assets/fonts/FontAwesome6_Brands.ttf'
-        exclude 'assets/fonts/FontAwesome6_Regular.ttf'
-        exclude 'assets/fonts/FontAwesome6_Solid.ttf'
-        exclude 'assets/fonts/Fontisto.ttf'
-        exclude 'assets/fonts/Foundation.ttf'
-        exclude 'assets/fonts/MaterialIcons.ttf'
-        exclude 'assets/fonts/Octicons.ttf'
-        exclude 'assets/fonts/SimpleLineIcons.ttf'
-        exclude 'assets/fonts/Zocial.ttf'
-        // Compress native libs inside APK (saves ~7MB)
-        jniLibs {
-            useLegacyPackaging = true
-        }
-    }`
-      );
-    }
-
-    mod.modResults.contents = contents;
-    return mod;
-  });
-}
 
 /**
  * Set gradle.properties for R8, architectures, etc.
@@ -234,10 +189,21 @@ function withGradleProps(config) {
   return withGradleProperties(config, (mod) => {
     const props = mod.modResults;
 
+    const unusedFonts = [
+      "AntDesign.ttf", "Entypo.ttf", "EvilIcons.ttf", "Feather.ttf",
+      "FontAwesome.ttf", "FontAwesome5_Brands.ttf", "FontAwesome5_Regular.ttf",
+      "FontAwesome5_Solid.ttf", "FontAwesome6_Brands.ttf", "FontAwesome6_Regular.ttf",
+      "FontAwesome6_Solid.ttf", "Fontisto.ttf", "Foundation.ttf",
+      "MaterialIcons.ttf", "Octicons.ttf", "SimpleLineIcons.ttf", "Zocial.ttf",
+    ].map((f) => `**/fonts/${f}`).join(",");
+
     const overrides = {
       "android.enableMinifyInReleaseBuilds": "true",
       "android.enableShrinkResourcesInReleaseBuilds": "true",
       "android.enablePngCrunchInReleaseBuilds": "true",
+      "android.enableBundleCompression": "true",
+      "expo.useLegacyPackaging": "true",
+      "android.packagingOptions.excludes": unusedFonts,
       reactNativeArchitectures: "arm64-v8a",
     };
 
@@ -266,6 +232,5 @@ module.exports = function withAndroidCustomizations(config) {
   config = withLocationForegroundService(config);
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
-  config = withFontAndSizeOptimizations(config);
   return config;
 };
