@@ -148,7 +148,7 @@ FindMe contains **no advertising, analytics, or tracking services**. No data is 
 
 The app does not include Firebase, Google MLKit, or any other proprietary Google SDK for its core functionality. QR code scanning uses a pure-JavaScript decoder (@paulmillr/qr). Notifications use a polling mechanism instead of Firebase Cloud Messaging.
 
-> **Note:** The app currently depends on `play-services-location` via `expo-location` for battery-efficient background location tracking (Google's FusedLocationProviderClient). This is the only Google dependency. The app works on degoogled devices running [microG](https://microg.org/) as a drop-in replacement.
+> **Note:** As of v0.8.1, the app no longer depends on Google Play Services. Background location tracking uses Android's native `LocationManager` API via a patch on expo-location's Kotlin source. There are zero proprietary Google dependencies. The app works on standard Android, degoogled devices, and devices running [microG](https://microg.org/).
 
 ### Building from source
 
