@@ -289,6 +289,40 @@ function withProguardGmsIgnore(config) {
 }
 
 /**
+ * Patch the React Native Gradle plugin to pin react_native_dev_server_ip to localhost.
+ * Without this, the plugin calls getHostIpAddress() which returns a machine-specific IP,
+ * making builds non-reproducible across different environments.
+ * See: https://github.com/nicclaj/nicclaj.github.io/blob/main/_posts/2024-12-10-reproducible-apks-with-react-native.md
+ */
+function withReproducibleDevServerIp(config) {
+  return withDangerousMod(config, [
+    "android",
+    async (mod) => {
+      const ktFile = path.join(
+        mod.modRequest.projectRoot,
+        "node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt"
+      );
+
+      if (fs.existsSync(ktFile)) {
+        let content = fs.readFileSync(ktFile, "utf-8");
+
+        // Replace getHostIpAddress() call with static "localhost"
+        // Original: resValue(type = "string", name = "ReactNativeDevServerIP", value = getHostIpAddress())
+        if (content.includes("getHostIpAddress()")) {
+          content = content.replace(
+            /value\s*=\s*getHostIpAddress\(\)/g,
+            'value = "localhost"'
+          );
+          fs.writeFileSync(ktFile, content);
+        }
+      }
+
+      return mod;
+    },
+  ]);
+}
+
+/**
  * Main plugin — applies all customizations
  */
 module.exports = function withAndroidCustomizations(config) {
@@ -298,5 +332,6 @@ module.exports = function withAndroidCustomizations(config) {
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
   config = withProguardGmsIgnore(config);
+  config = withReproducibleDevServerIp(config);
   return config;
 };
