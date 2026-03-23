@@ -82,21 +82,11 @@ function withVersionCode(config) {
       );
     }
 
-    // Exclude all Google Play Services / GMS / Firebase dependencies globally (FOSS compliance)
-    // This prevents any transitive dependency from pulling in proprietary Google libraries
-    if (!contents.includes("exclude group: 'com.google.android.gms'")) {
-      contents = contents.replace(
-        /^(dependencies\s*\{)/m,
-        `// Exclude all Google Play Services / GMS dependencies globally (FOSS compliance)
-configurations.all {
-    exclude group: 'com.google.android.gms'
-    exclude group: 'com.google.firebase'
-    exclude group: 'com.google.android.play'
-}
-
-$1`
-      );
-    }
+    // Note: We do NOT use configurations.all { exclude group: 'com.google.android.gms' }
+    // because blanket exclusion causes runtime ClassNotFoundException crashes.
+    // Instead, the expo-location patch removes the only direct GMS dependency (play-services-location)
+    // from expo-location's build.gradle. No other library in our dependency tree pulls in GMS,
+    // so no GMS bytecode ends up in the APK.
 
     mod.modResults.contents = contents;
     return mod;
@@ -331,9 +321,8 @@ module.exports = function withAndroidCustomizations(config) {
   config = withLocationForegroundService(config);
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
-  config = withProguardGmsIgnore(config);
-  // Note: withReproducibleDevServerIp disabled for now — patching RN Gradle plugin
-  // Kotlin source at build time causes runtime crashes. Will revisit when RN 0.85
-  // includes the upstream fix (facebook/react-native#47loading).
+  // Note: withProguardGmsIgnore and withReproducibleDevServerIp disabled.
+  // Blanket GMS exclusion causes ClassNotFoundException at runtime.
+  // The expo-location patch already removes the only direct GMS dependency.
   return config;
 };
