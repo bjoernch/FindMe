@@ -14,7 +14,7 @@
     "@notifee/react-native": "^9.1.8",
     "@paulmillr/qr": "^0.3.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-native-community/netinfo": "^11.5.2",
+    "@react-native-community/netinfo": "^12.0.1",
     "buffer": "^6.0.3",
     "expo": "~55.0.5",
     "expo-battery": "~55.0.4",
