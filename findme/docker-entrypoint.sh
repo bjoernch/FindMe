@@ -54,6 +54,8 @@ fi
 
 # Run Prisma migrations
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] INF [startup] Running database migrations..."
+# Resolve any previously failed migrations so they can be retried
+node node_modules/prisma/build/index.js migrate resolve --rolled-back 20260323070000_add_security_and_settings_fields 2>/dev/null || true
 if node node_modules/prisma/build/index.js migrate deploy 2>&1; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] INF [startup] Migrations applied successfully"
 else

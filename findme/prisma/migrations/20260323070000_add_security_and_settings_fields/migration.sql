@@ -1,5 +1,6 @@
 -- Add password change tracking for session invalidation
-ALTER TABLE "User" ADD COLUMN "passwordChangedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "User" ADD COLUMN "passwordChangedAt" DATETIME;
+UPDATE "User" SET "passwordChangedAt" = CURRENT_TIMESTAMP WHERE "passwordChangedAt" IS NULL;
 
 -- Add user-level settings for data retention and webhooks
 ALTER TABLE "User" ADD COLUMN "retentionDays" INTEGER;
