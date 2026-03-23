@@ -158,6 +158,13 @@ android {
     }
 }
 
+// Exclude all Google Play Services / GMS dependencies globally (FOSS compliance)
+configurations.all {
+    exclude group: 'com.google.android.gms'
+    exclude group: 'com.google.firebase'
+    exclude group: 'com.google.android.play'
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")

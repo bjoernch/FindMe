@@ -57,7 +57,7 @@ function withReleaseSigning(config) {
 
 /**
  * Set versionCode from VERSION_CODE env var (CI sets this from the tag).
- * Also disables dependency metadata (encrypted Google blob) for FOSS compliance.
+ * Also disables dependency metadata and excludes all GMS/Firebase for FOSS compliance.
  */
 function withVersionCode(config) {
   return withAppBuildGradle(config, (mod) => {
@@ -79,6 +79,22 @@ function withVersionCode(config) {
         includeInApk = false
         includeInBundle = false
     }`
+      );
+    }
+
+    // Exclude all Google Play Services / GMS / Firebase dependencies globally (FOSS compliance)
+    // This prevents any transitive dependency from pulling in proprietary Google libraries
+    if (!contents.includes("exclude group: 'com.google.android.gms'")) {
+      contents = contents.replace(
+        /^(dependencies\s*\{)/m,
+        `// Exclude all Google Play Services / GMS dependencies globally (FOSS compliance)
+configurations.all {
+    exclude group: 'com.google.android.gms'
+    exclude group: 'com.google.firebase'
+    exclude group: 'com.google.android.play'
+}
+
+$1`
       );
     }
 
@@ -111,6 +127,19 @@ function withLocationForegroundService(config) {
     const app = manifest.application?.[0];
     if (app) {
       if (!app.service) app.service = [];
+
+      // Remove GMS ModuleDependencies service injected by expo-image-picker (FOSS compliance)
+      // Izzy's scanner flags /com/google/android/gms as NonFreeComp
+      app.service = app.service.filter(
+        (s) => s.$?.["android:name"] !== "com.google.android.gms.metadata.ModuleDependencies"
+      );
+      // Also add explicit removal via tools:node="remove" for manifest merger
+      app.service.push({
+        $: {
+          "android:name": "com.google.android.gms.metadata.ModuleDependencies",
+          "tools:node": "remove",
+        },
+      });
 
       const hasLocationService = app.service.some(
         (s) =>
