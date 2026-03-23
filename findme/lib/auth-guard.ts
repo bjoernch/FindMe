@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 import { auth } from "./auth";
 import { verifyJwt } from "./jwt";
 import { prisma } from "./db";
@@ -25,29 +26,51 @@ export async function authenticateRequest(
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.slice(7);
     const payload = verifyJwt(token);
-    if (!payload) {
-      return apiError("Invalid or expired token", 401);
-    }
 
-    // Check if token was issued before password change (session invalidation)
-    if (payload.iat) {
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: payload.userId },
-          select: { passwordChangedAt: true },
-        });
-        if (user?.passwordChangedAt) {
-          const changedAtSec = Math.floor(user.passwordChangedAt.getTime() / 1000);
-          if (payload.iat < changedAtSec) {
-            return apiError("Token invalidated by password change. Please sign in again.", 401);
+    if (payload) {
+      // Check if token was issued before password change (session invalidation)
+      if (payload.iat) {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: { passwordChangedAt: true },
+          });
+          if (user?.passwordChangedAt) {
+            const changedAtSec = Math.floor(user.passwordChangedAt.getTime() / 1000);
+            if (payload.iat < changedAtSec) {
+              return apiError("Token invalidated by password change. Please sign in again.", 401);
+            }
           }
+        } catch {
+          // If DB check fails, allow the token (don't break auth on transient DB errors)
         }
-      } catch {
-        // If DB check fails, allow the token (don't break auth on transient DB errors)
       }
+
+      return { id: payload.userId, email: payload.email, role: payload.role };
     }
 
-    return { id: payload.userId, email: payload.email, role: payload.role };
+    // JWT failed - try API key authentication
+    try {
+      const keyHash = crypto.createHash("sha256").update(token).digest("hex");
+      const apiKey = await prisma.apiKey.findUnique({
+        where: { keyHash },
+        include: { user: true },
+      });
+
+      if (apiKey) {
+        // Update lastUsed timestamp (fire-and-forget)
+        prisma.apiKey.update({
+          where: { id: apiKey.id },
+          data: { lastUsed: new Date() },
+        }).catch(() => {});
+
+        return { id: apiKey.user.id, email: apiKey.user.email, role: apiKey.user.role };
+      }
+    } catch {
+      // If API key lookup fails, fall through to error
+    }
+
+    return apiError("Invalid or expired token", 401);
   }
 
   // Try NextAuth session (web dashboard)

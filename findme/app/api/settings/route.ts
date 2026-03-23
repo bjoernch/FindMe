@@ -7,6 +7,45 @@ import { authenticateRequest } from "@/lib/auth-guard";
 import { settingsUpdateSchema } from "@/lib/validations";
 import { sendEmail } from "@/lib/email";
 
+export async function GET(req: NextRequest) {
+  try {
+    const authResult = await authenticateRequest(req);
+    if (authResult instanceof Response) return authResult;
+
+    const user = await prisma.user.findUnique({
+      where: { id: authResult.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        role: true,
+        retentionDays: true,
+        webhookUrl: true,
+        webhookSecret: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) return apiError("User not found", 404);
+
+    return apiSuccess({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatar: user.avatar,
+      role: user.role,
+      retentionDays: user.retentionDays,
+      webhookUrl: user.webhookUrl,
+      webhookSecret: user.webhookSecret ? "***" : null,
+      createdAt: user.createdAt.toISOString(),
+    });
+  } catch (error) {
+    log.error("settings", "Settings GET failed", error);
+    return apiError("Internal server error", 500);
+  }
+}
+
 export async function PATCH(req: NextRequest) {
   try {
     const authResult = await authenticateRequest(req);
@@ -19,7 +58,7 @@ export async function PATCH(req: NextRequest) {
       return apiError(parsed.error.issues[0].message, 400);
     }
 
-    const { name, currentPassword, newPassword, retentionDays } = parsed.data;
+    const { name, currentPassword, newPassword, retentionDays, webhookUrl, webhookSecret } = parsed.data;
 
     const user = await prisma.user.findUnique({
       where: { id: authResult.id },
@@ -34,6 +73,14 @@ export async function PATCH(req: NextRequest) {
 
     if (name) {
       updateData.name = name;
+    }
+
+    if (webhookUrl !== undefined) {
+      updateData.webhookUrl = webhookUrl;
+    }
+
+    if (webhookSecret !== undefined) {
+      updateData.webhookSecret = webhookSecret;
     }
 
     if (newPassword) {

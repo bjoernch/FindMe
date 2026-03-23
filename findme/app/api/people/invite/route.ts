@@ -8,12 +8,16 @@ import { sendInvitationEmail } from "@/lib/email";
 import { sendPushWithPrefs } from "@/lib/push";
 import { shouldNotify } from "@/lib/notification-preferences";
 import { getPublicUrl } from "@/lib/settings";
+import { rateLimit } from "@/lib/rate-limit";
 import type { PeopleSharePublic } from "@/types/api";
 
 export async function POST(req: NextRequest) {
   try {
     const authResult = await authenticateRequest(req);
     if (authResult instanceof Response) return authResult;
+
+    const { allowed } = rateLimit(`invite:${authResult.id}`, 20, 60_000);
+    if (!allowed) return apiError("Too many requests", 429);
 
     const body = await req.json();
     const parsed = peopleInviteSchema.safeParse(body);

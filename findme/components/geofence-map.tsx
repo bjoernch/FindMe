@@ -101,14 +101,23 @@ export default function GeofenceMap({
   newFence,
   onMapClick,
 }: GeofenceMapProps) {
-  const { theme } = useTheme();
-  const defaultTile = theme === "dark" ? "dark" : "light";
-  const [tileId, setTileId] = useState<TileLayerId>(defaultTile);
+  const { isDark } = useTheme();
+  const [tileId, setTileId] = useState<TileLayerId>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("findme-geofence-tile");
+      if (saved && saved in TILE_LAYERS) return saved as TileLayerId;
+    }
+    return isDark ? "dark" : "light";
+  });
+  const [userChose, setUserChose] = useState(() => {
+    if (typeof window !== "undefined") return !!localStorage.getItem("findme-geofence-tile");
+    return false;
+  });
   const selected = geofences.find((f) => f.id === selectedId);
 
   useEffect(() => {
-    setTileId(theme === "dark" ? "dark" : "light");
-  }, [theme]);
+    if (!userChose) setTileId(isDark ? "dark" : "light");
+  }, [isDark, userChose]);
 
   // Default center: first geofence or world center
   const center: [number, number] = geofences.length > 0
@@ -186,7 +195,7 @@ export default function GeofenceMap({
           {TILE_IDS.map((id) => (
             <button
               key={id}
-              onClick={(e) => { e.stopPropagation(); setTileId(id); }}
+              onClick={(e) => { e.stopPropagation(); setTileId(id); setUserChose(true); localStorage.setItem("findme-geofence-tile", id); }}
               style={{
                 padding: "4px 8px",
                 fontSize: 11,

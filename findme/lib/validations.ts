@@ -79,4 +79,6 @@ export const settingsUpdateSchema = z.object({
   currentPassword: z.string().optional(),
   newPassword: z.string().min(8).optional(),
   retentionDays: z.number().int().min(1).max(365).optional(),
+  webhookUrl: z.string().url().nullable().optional(),
+  webhookSecret: z.string().max(256).nullable().optional(),
 });

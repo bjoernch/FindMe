@@ -3,6 +3,7 @@ import { sseManager } from "./sse-manager";
 import { sendPushWithPrefs } from "./push";
 import { sendGeofenceAlertEmail } from "./email";
 import { shouldNotify } from "./notification-preferences";
+import { sendWebhook } from "./webhook";
 import { log } from "@/lib/logger";
 
 // In-memory cache: "ownerId:geofenceId" -> isInside (keyed by owner to support cross-user geofences)
@@ -26,7 +27,7 @@ function haversineDistance(
 }
 
 async function sendGeofenceNotifications(
-  fence: { id: string; userId: string; name: string },
+  fence: { id: string; userId: string; name: string; lat: number; lng: number; radiusM: number },
   deviceName: string,
   eventType: "ENTER" | "EXIT",
   lat: number,
@@ -63,6 +64,14 @@ async function sendGeofenceNotifications(
       }
     })
     .catch((e) => log.error("geofence", "Email notification failed", e));
+
+  // Webhook notification
+  sendWebhook(fence.userId, {
+    event: eventType === "ENTER" ? "geofence.enter" : "geofence.exit",
+    geofence: { name: fence.name, lat: fence.lat, lng: fence.lng, radiusM: fence.radiusM },
+    device: { name: deviceName },
+    timestamp: new Date().toISOString(),
+  });
 }
 
 export async function checkGeofences(

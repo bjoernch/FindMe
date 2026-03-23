@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
 import { sendEmail } from "@/lib/email";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,6 +34,9 @@ export async function POST(req: NextRequest) {
   try {
     const authResult = await authenticateRequest(req);
     if (authResult instanceof Response) return authResult;
+
+    const { allowed } = rateLimit(`geofence-create:${authResult.id}`, 20, 60_000);
+    if (!allowed) return apiError("Too many requests", 429);
 
     const { name, lat, lng, radiusM, onEnter, onExit, monitoredUserId } = await req.json();
 

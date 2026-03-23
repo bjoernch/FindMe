@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { getChallenge } from "@/lib/passkey-challenges";
 import { signJwt, signRefreshToken } from "@/lib/jwt";
+import { rateLimit } from "@/lib/rate-limit";
 import type { UserPublic } from "@/types/api";
 
 function getRpId(req: NextRequest): string {
@@ -30,6 +31,10 @@ function getExpectedOrigins(req: NextRequest): string[] {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
+    const { allowed } = rateLimit(`passkey-login-verify-mobile:${ip}`, 10, 60_000);
+    if (!allowed) return apiError("Too many requests", 429);
+
     const body = await req.json();
     const { credential, sessionKey } = body as {
       credential: AuthenticationResponseJSON;

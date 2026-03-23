@@ -3,16 +3,41 @@
  * Manages client connections and broadcasts location updates.
  */
 
+// Side-effect import: starts the pruning scheduler on first load
+import "./pruning";
+
+const MAX_CONNECTIONS_PER_USER = 5;
+
 interface SSEClient {
   controller: ReadableStreamDefaultController;
   userId: string;
+  connectedAt: number;
 }
 
 class SSEManager {
   private clients = new Map<string, SSEClient>();
 
   addClient(clientId: string, controller: ReadableStreamDefaultController, userId: string) {
-    this.clients.set(clientId, { controller, userId });
+    // Enforce per-user connection limit
+    const userClients = this.getConnectionsForUser(userId);
+    if (userClients.length >= MAX_CONNECTIONS_PER_USER) {
+      // Close the oldest connection
+      const oldest = userClients.sort((a, b) => a.connectedAt - b.connectedAt)[0];
+      try {
+        oldest.controller.close();
+      } catch {
+        // Already closed
+      }
+      // Find and remove the oldest client entry
+      for (const [id, client] of this.clients.entries()) {
+        if (client === oldest) {
+          this.clients.delete(id);
+          break;
+        }
+      }
+    }
+
+    this.clients.set(clientId, { controller, userId, connectedAt: Date.now() });
   }
 
   removeClient(clientId: string) {
@@ -52,6 +77,19 @@ class SSEManager {
 
   getClientCount(): number {
     return this.clients.size;
+  }
+
+  /**
+   * Get all connections for a specific user (for debugging and limit enforcement).
+   */
+  getConnectionsForUser(userId: string): SSEClient[] {
+    const connections: SSEClient[] = [];
+    for (const client of this.clients.values()) {
+      if (client.userId === userId) {
+        connections.push(client);
+      }
+    }
+    return connections;
   }
 }
 

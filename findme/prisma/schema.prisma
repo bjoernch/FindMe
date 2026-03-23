@@ -31,6 +31,11 @@ model User {
   pushTokens           PushToken[]
   notifications        Notification[]
   notificationPrefs    NotificationPreference?
+  apiKeys              ApiKey[]
+
+  retentionDays  Int?
+  webhookUrl     String?
+  webhookSecret  String?
 }
 
 model Device {
@@ -219,4 +224,19 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  keyHash   String    @unique
+  prefix    String
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([keyHash])
+  @@index([userId])
 }

@@ -3,6 +3,7 @@ import { log } from "@/lib/logger";
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { storeChallenge } from "@/lib/passkey-challenges";
+import { rateLimit } from "@/lib/rate-limit";
 import { v4 as uuidv4 } from "uuid";
 
 function getRpId(req: NextRequest): string {
@@ -12,6 +13,10 @@ function getRpId(req: NextRequest): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
+    const { allowed } = rateLimit(`passkey-login-options:${ip}`, 10, 60_000);
+    if (!allowed) return apiError("Too many requests", 429);
+
     const rpID = getRpId(req);
 
     // Generate a random session key since user is not authenticated yet

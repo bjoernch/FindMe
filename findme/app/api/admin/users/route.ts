@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest, requireAdmin } from "@/lib/auth-guard";
 import { sendEmail } from "@/lib/email";
+import { rateLimit } from "@/lib/rate-limit";
 import type { AdminUserView } from "@/types/api";
 
 export async function GET(req: NextRequest) {
@@ -63,6 +64,9 @@ export async function POST(req: NextRequest) {
 
     const adminCheck = requireAdmin(authResult);
     if (adminCheck) return adminCheck;
+
+    const { allowed } = rateLimit(`admin-create-user:${authResult.id}`, 10, 60_000);
+    if (!allowed) return apiError("Too many requests", 429);
 
     const { email, name, password, role } = await req.json();
     if (!email || !password) return apiError("Email and password are required", 400);

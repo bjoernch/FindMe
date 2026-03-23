@@ -134,7 +134,16 @@ jobs:
       - name: Re-apply patches after prebuild
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
-        run: npx patch-package
+        run: |
+          npx patch-package
+          echo "=== Verifying patched source has no GMS ==="
+          if grep -r "com.google.android.gms" node_modules/expo-location/android/src/ 2>/dev/null; then
+            echo "ERROR: GMS still in source after patch!"
+            exit 1
+          fi
+          echo "OK: Source is clean"
+          echo "=== Cleaning Gradle build cache to force recompilation from patched source ==="
+          cd android && ./gradlew clean 2>/dev/null || true
 
       - name: Verify generated build.gradle
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
@@ -180,7 +189,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --no-build-cache
 
       - name: Rename artifact
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'

@@ -253,6 +253,42 @@ function withGradleProps(config) {
 }
 
 /**
+ * Add proguard rules for FOSS compliance — tell R8 to ignore missing GMS classes.
+ * GMS JARs are excluded via Gradle configurations.all { exclude }, but R8 needs
+ * -dontwarn to not fail on residual references from third-party libraries.
+ */
+function withProguardGmsIgnore(config) {
+  return withDangerousMod(config, [
+    "android",
+    async (mod) => {
+      const proguardPath = path.join(
+        mod.modRequest.platformProjectRoot,
+        "app/proguard-rules.pro"
+      );
+
+      let content = "";
+      if (fs.existsSync(proguardPath)) {
+        content = fs.readFileSync(proguardPath, "utf-8");
+      }
+
+      const gmsRules = `
+# FOSS compliance: GMS is excluded via Gradle configurations.all { exclude }.
+# Tell R8 to ignore any residual references to GMS classes.
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.play.**`;
+
+      if (!content.includes("-dontwarn com.google.android.gms.**")) {
+        content += "\n" + gmsRules + "\n";
+        fs.writeFileSync(proguardPath, content);
+      }
+
+      return mod;
+    },
+  ]);
+}
+
+/**
  * Main plugin — applies all customizations
  */
 module.exports = function withAndroidCustomizations(config) {
@@ -261,5 +297,6 @@ module.exports = function withAndroidCustomizations(config) {
   config = withLocationForegroundService(config);
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
+  config = withProguardGmsIgnore(config);
   return config;
 };

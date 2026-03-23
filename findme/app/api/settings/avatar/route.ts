@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { prisma } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api-response";
 import { authenticateRequest } from "@/lib/auth-guard";
+import { rateLimit } from "@/lib/rate-limit";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB upload limit
 const OUTPUT_SIZE = 256; // px
@@ -12,6 +13,9 @@ export async function POST(req: NextRequest) {
   try {
     const authResult = await authenticateRequest(req);
     if (authResult instanceof Response) return authResult;
+
+    const { allowed } = rateLimit(`avatar-upload:${authResult.id}`, 10, 60_000);
+    if (!allowed) return apiError("Too many requests", 429);
 
     const contentType = req.headers.get("content-type") || "";
 

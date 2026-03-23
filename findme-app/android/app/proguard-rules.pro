@@ -12,3 +12,10 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 
 # Add any project specific keep options here:
+
+# FOSS compliance: GMS is excluded via Gradle configurations.all { exclude }.
+# Tell R8 to ignore any residual references to GMS classes from third-party
+# libraries that may have soft/optional dependencies on Play Services.
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.play.**
