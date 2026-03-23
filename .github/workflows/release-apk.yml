@@ -131,6 +131,11 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: npx expo prebuild --clean --platform android
 
+      - name: Re-apply patches after prebuild
+        if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
+        working-directory: findme-app
+        run: npx patch-package
+
       - name: Verify generated build.gradle
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
@@ -143,6 +148,23 @@ jobs:
           echo ""
           echo "=== Manifest service check ==="
           grep -i "foregroundServiceType\|LocationTaskService\|POST_NOTIFICATIONS" android/app/src/main/AndroidManifest.xml || echo "WARNING: Missing service or permission!"
+          echo ""
+          echo "=== GMS removal check ==="
+          if grep -r "com.google.android.gms" android/app/src/main/AndroidManifest.xml | grep -v 'tools:node="remove"'; then
+            echo "WARNING: GMS references found in manifest!"
+          else
+            echo "OK: No GMS references in manifest"
+          fi
+          echo "=== Gradle GMS exclusion check ==="
+          grep "exclude group.*google" android/app/build.gradle || echo "WARNING: No GMS exclusion in build.gradle!"
+          echo ""
+          echo "=== expo-location patch check ==="
+          if grep -r "com.google.android.gms" node_modules/expo-location/android/src/ 2>/dev/null; then
+            echo "ERROR: expo-location patch not applied — GMS imports still present!"
+            exit 1
+          else
+            echo "OK: expo-location patch applied — no GMS imports"
+          fi
 
       - name: Bundle JS
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'

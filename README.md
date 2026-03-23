@@ -19,8 +19,7 @@
 
 <p align="center">
   <a href="https://github.com/bjoernch/FindMe">GitHub</a> &bull;
-  <a href="https://codeberg.org/bjoernch/FindMe">Codeberg</a> &bull;
-  <a href="https://gitlab.com/fdroid/rfp/-/work_items/3704">F-Droid Packaging Request</a>
+  <a href="https://codeberg.org/bjoernch/FindMe">Codeberg</a>
 </p>
 
 ---
@@ -92,7 +91,7 @@ EOF
 
 The FindMe companion app runs on Android (iOS planned).
 
-**Install:** Download the latest APK from [GitHub Releases](https://github.com/bjoernch/FindMe/releases) or [Codeberg Releases](https://codeberg.org/bjoernch/FindMe/releases). Packaging for the [IzzyOnDroid](https://apt.izzysoft.de/fdroid/) F-Droid repository has been [requested](https://codeberg.org/IzzyOnDroid/repodata/issues/67).
+**Install:** Download the latest APK from [GitHub Releases](https://github.com/bjoernch/FindMe/releases) or [Codeberg Releases](https://codeberg.org/bjoernch/FindMe/releases). Packaging for [IzzyOnDroid](https://apt.izzysoft.de/fdroid/) has been [requested](https://codeberg.org/IzzyOnDroid/repodata/issues/67), and an [F-Droid packaging request](https://gitlab.com/fdroid/rfp/-/work_items/3704) has been submitted.
 
 **Connect:** Open the app, enter your server URL, and register — or scan a QR pairing code from the web dashboard's Settings page.
 
