@@ -3,12 +3,14 @@
  * These survive `expo prebuild --clean` since they're applied during generation.
  *
  * Handles:
- * - Release signing config (keystore from env vars)
+ * - Release signing config (keystore from env vars, gracefully skipped if not set)
  * - Network security config (cleartext for local networks only)
  * - Gradle properties (R8 minification, architecture filter)
  * - POST_NOTIFICATIONS permission
  * - Location foreground service declaration
  * - versionCode from env var
+ * - FOSS compliance (no dependency metadata, no GMS manifest entries)
+ * - Reproducible build settings (no PNG crunching)
  */
 const {
   withAndroidManifest,
@@ -21,8 +23,9 @@ const path = require("path");
 
 /**
  * Fix release signing config in build.gradle.
- * Expo's default template already has a signingConfigs block with only debug.
- * We add a release config and point the release buildType to it.
+ * Uses env vars when available, falls back to debug keystore for unsigned builds.
+ * F-Droid builds work without setting any env vars — the release buildType
+ * simply uses the debug keystore, producing an unsigned-equivalent APK.
  */
 function withReleaseSigning(config) {
   return withAppBuildGradle(config, (mod) => {
@@ -57,7 +60,7 @@ function withReleaseSigning(config) {
 
 /**
  * Set versionCode from VERSION_CODE env var (CI sets this from the tag).
- * Also disables dependency metadata and excludes all GMS/Firebase for FOSS compliance.
+ * Also disables dependency metadata block and PNG crunching for FOSS/reproducibility.
  */
 function withVersionCode(config) {
   return withAppBuildGradle(config, (mod) => {
@@ -71,16 +74,19 @@ function withVersionCode(config) {
 
     // Disable dependency metadata (IzzyOnDroid/F-Droid requirement)
     // This blob is encrypted with a Google public key and cannot be verified by anyone else.
+    // Insert inside the android.defaultConfig block (safe position for all Gradle versions)
     if (!contents.includes("dependenciesInfo")) {
       contents = contents.replace(
-        /(android\s*\{)/,
-        `$1
-    dependenciesInfo {
-        includeInApk = false
-        includeInBundle = false
-    }`
+        /(buildTypes\s*\{)/,
+        `dependenciesInfo {\n        includeInApk = false\n        includeInBundle = false\n    }\n    $1`
       );
     }
+
+    // Disable PNG crunching — it's non-deterministic and breaks reproducible builds
+    contents = contents.replace(
+      /crunchPngs\s+enablePngCrunchInRelease\.toBoolean\(\)/,
+      "crunchPngs false"
+    );
 
     // Note: We do NOT use configurations.all { exclude group: 'com.google.android.gms' }
     // because blanket exclusion causes runtime ClassNotFoundException crashes.
@@ -219,7 +225,7 @@ function withGradleProps(config) {
     const overrides = {
       "android.enableMinifyInReleaseBuilds": "true",
       "android.enableShrinkResourcesInReleaseBuilds": "true",
-      "android.enablePngCrunchInReleaseBuilds": "true",
+      "android.enablePngCrunchInReleaseBuilds": "false",
       "android.enableBundleCompression": "true",
       "expo.useLegacyPackaging": "true",
       "android.packagingOptions.excludes": unusedFonts,
@@ -244,8 +250,8 @@ function withGradleProps(config) {
 
 /**
  * Add proguard rules for FOSS compliance — tell R8 to ignore missing GMS classes.
- * GMS JARs are excluded via Gradle configurations.all { exclude }, but R8 needs
- * -dontwarn to not fail on residual references from third-party libraries.
+ * expo-location patch removes the direct dependency, but some third-party libraries
+ * may still have compile-time references to GMS classes. R8 needs -dontwarn for those.
  */
 function withProguardGmsIgnore(config) {
   return withDangerousMod(config, [
@@ -262,8 +268,8 @@ function withProguardGmsIgnore(config) {
       }
 
       const gmsRules = `
-# FOSS compliance: GMS is excluded via Gradle configurations.all { exclude }.
-# Tell R8 to ignore any residual references to GMS classes.
+# FOSS compliance: expo-location patch removes play-services-location dependency.
+# R8 may still see residual references from third-party libraries — ignore them.
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.play.**`;
@@ -271,40 +277,6 @@ function withProguardGmsIgnore(config) {
       if (!content.includes("-dontwarn com.google.android.gms.**")) {
         content += "\n" + gmsRules + "\n";
         fs.writeFileSync(proguardPath, content);
-      }
-
-      return mod;
-    },
-  ]);
-}
-
-/**
- * Patch the React Native Gradle plugin to pin react_native_dev_server_ip to localhost.
- * Without this, the plugin calls getHostIpAddress() which returns a machine-specific IP,
- * making builds non-reproducible across different environments.
- * See: https://github.com/nicclaj/nicclaj.github.io/blob/main/_posts/2024-12-10-reproducible-apks-with-react-native.md
- */
-function withReproducibleDevServerIp(config) {
-  return withDangerousMod(config, [
-    "android",
-    async (mod) => {
-      const ktFile = path.join(
-        mod.modRequest.projectRoot,
-        "node_modules/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt"
-      );
-
-      if (fs.existsSync(ktFile)) {
-        let content = fs.readFileSync(ktFile, "utf-8");
-
-        // Replace getHostIpAddress() call with static "localhost"
-        // Original: resValue(type = "string", name = "ReactNativeDevServerIP", value = getHostIpAddress())
-        if (content.includes("getHostIpAddress()")) {
-          content = content.replace(
-            /value\s*=\s*getHostIpAddress\(\)/g,
-            'value = "localhost"'
-          );
-          fs.writeFileSync(ktFile, content);
-        }
       }
 
       return mod;
@@ -321,8 +293,6 @@ module.exports = function withAndroidCustomizations(config) {
   config = withLocationForegroundService(config);
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
-  // Note: withProguardGmsIgnore and withReproducibleDevServerIp disabled.
-  // Blanket GMS exclusion causes ClassNotFoundException at runtime.
-  // The expo-location patch already removes the only direct GMS dependency.
+  config = withProguardGmsIgnore(config);
   return config;
 };
