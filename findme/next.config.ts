@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["nodemailer", "better-sqlite3"],
+  serverExternalPackages: ["nodemailer"],
   async headers() {
     return [
       {
