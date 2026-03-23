@@ -19,7 +19,8 @@
 
 <p align="center">
   <a href="https://github.com/bjoernch/FindMe">GitHub</a> &bull;
-  <a href="https://codeberg.org/bjoernch/FindMe">Codeberg</a>
+  <a href="https://codeberg.org/bjoernch/FindMe">Codeberg</a> &bull;
+  <a href="https://gitlab.com/fdroid/rfp/-/work_items/3704">F-Droid Packaging Request</a>
 </p>
 
 ---
