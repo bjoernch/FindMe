@@ -332,6 +332,8 @@ module.exports = function withAndroidCustomizations(config) {
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
   config = withProguardGmsIgnore(config);
-  config = withReproducibleDevServerIp(config);
+  // Note: withReproducibleDevServerIp disabled for now — patching RN Gradle plugin
+  // Kotlin source at build time causes runtime crashes. Will revisit when RN 0.85
+  // includes the upstream fix (facebook/react-native#47loading).
   return config;
 };
