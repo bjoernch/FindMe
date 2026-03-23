@@ -2,10 +2,11 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl python3 make g++
 
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts --legacy-peer-deps && \
+RUN npm ci --legacy-peer-deps && \
+    npm rebuild better-sqlite3 && \
     npm install --os=linux sharp --legacy-peer-deps
 
 # ── Stage 2: Build ────────────────────────────────────────
@@ -49,6 +50,9 @@ COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
 COPY --from=builder /app/node_modules/@img ./node_modules/@img
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/node_modules/nodemailer ./node_modules/nodemailer
+COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
+COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
+COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
 # Entrypoint script for migrations
 COPY docker-entrypoint.sh ./
