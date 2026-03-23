@@ -152,12 +152,20 @@ The app does not include Firebase, Google MLKit, or any other proprietary Google
 
 ### Building from source
 
+**Requirements:**
+- Node.js 20+
+- JDK 17
+- Android SDK (API 36, Build Tools 36.0.0)
+- NDK 27.1.12297006
+
 ```bash
 cd findme-app
 npm install
 npx expo prebuild --platform android
 cd android && ./gradlew assembleRelease
 ```
+
+The output APK is at `findme-app/android/app/build/outputs/apk/release/app-release.apk`.
 
 ## Configuration
 
