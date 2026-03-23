@@ -3,7 +3,6 @@ name: Mirror to Codeberg
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       mirror_release:
@@ -16,6 +15,10 @@ on:
 # Required repository secrets:
 #   CODEBERG_TOKEN  - Codeberg personal access token (repo + misc read/write)
 #   CODEBERG_USER   - Codeberg username
+
+concurrency:
+  group: codeberg-mirror
+  cancel-in-progress: false
 
 jobs:
   mirror-code:
