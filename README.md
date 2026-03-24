@@ -160,12 +160,13 @@ The app does not include Firebase, Google MLKit, or any other proprietary Google
 
 ```bash
 cd findme-app
+export NODE_ENV=production
 npm install
 npx expo prebuild --platform android
 cd android && ./gradlew assembleRelease
 ```
 
-The output APK is at `findme-app/android/app/build/outputs/apk/release/app-release.apk`.
+The output APK is at `findme-app/android/app/build/outputs/apk/release/app-release.apk`. Without signing environment variables, the build produces an unsigned APK.
 
 ## Configuration
 
