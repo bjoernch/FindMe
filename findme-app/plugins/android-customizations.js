@@ -331,6 +331,34 @@ function withProguardGmsIgnore(config) {
 }
 
 /**
+ * Add distributionSha256Sum to gradle-wrapper.properties for supply chain security.
+ * F-Droid requires this to verify the Gradle download integrity.
+ * expo prebuild --clean regenerates this file, so we must re-add it via plugin.
+ */
+function withGradleWrapperChecksum(config) {
+  return withDangerousMod(config, [
+    "android",
+    async (mod) => {
+      const propsPath = path.join(
+        mod.modRequest.platformProjectRoot,
+        "gradle/wrapper/gradle-wrapper.properties"
+      );
+
+      if (fs.existsSync(propsPath)) {
+        let content = fs.readFileSync(propsPath, "utf-8");
+        if (!content.includes("distributionSha256Sum")) {
+          // SHA-256 for gradle-9.0.0-bin.zip
+          content += "\ndistributionSha256Sum=8fad3d78296ca518113f3d29016617c7f9367dc005f932bd9d93bf45ba46072b\n";
+          fs.writeFileSync(propsPath, content);
+        }
+      }
+
+      return mod;
+    },
+  ]);
+}
+
+/**
  * Main plugin — applies all customizations
  */
 module.exports = function withAndroidCustomizations(config) {
@@ -340,5 +368,6 @@ module.exports = function withAndroidCustomizations(config) {
   config = withNetworkSecurityConfig(config);
   config = withGradleProps(config);
   config = withProguardGmsIgnore(config);
+  config = withGradleWrapperChecksum(config);
   return config;
 };
