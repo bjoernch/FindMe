@@ -3,14 +3,13 @@
  * These survive `expo prebuild --clean` since they're applied during generation.
  *
  * Handles:
- * - Release signing config (keystore from env vars, gracefully skipped if not set)
+ * - Release signing config (only when RELEASE_KEYSTORE_PATH is set; otherwise unsigned)
  * - Network security config (cleartext for local networks only)
  * - Gradle properties (R8 minification, architecture filter)
  * - POST_NOTIFICATIONS permission
  * - Location foreground service declaration
- * - versionCode from env var
- * - FOSS compliance (no dependency metadata, no GMS manifest entries)
- * - Reproducible build settings (no PNG crunching)
+ * - Deterministic versionCode derived from versionName
+ * - FOSS compliance (no dependency metadata, no GMS, no PNG crunching)
  */
 const {
   withAndroidManifest,
@@ -22,34 +21,50 @@ const fs = require("fs");
 const path = require("path");
 
 /**
- * Fix release signing config in build.gradle.
- * Uses env vars when available, falls back to debug keystore for unsigned builds.
- * F-Droid builds work without setting any env vars — the release buildType
- * simply uses the debug keystore, producing an unsigned-equivalent APK.
+ * Derive versionCode from versionName deterministically.
+ * "0.8.2" -> 0*10000 + 8*100 + 2 = 802
+ * This ensures reproducible builds produce the same versionCode
+ * regardless of environment variables.
+ */
+function deriveVersionCode(versionName) {
+  const parts = (versionName || "0.0.1").split(".").map(Number);
+  const major = parts[0] || 0;
+  const minor = parts[1] || 0;
+  const patch = parts[2] || 0;
+  return major * 10000 + minor * 100 + patch;
+}
+
+/**
+ * Configure release signing.
+ * When RELEASE_KEYSTORE_PATH env var is set (CI), uses that keystore.
+ * When not set (F-Droid / local), the release buildType has NO signingConfig,
+ * producing an unsigned APK that F-Droid can re-sign.
  */
 function withReleaseSigning(config) {
   return withAppBuildGradle(config, (mod) => {
     let contents = mod.modResults.contents;
 
-    // Add release signing config inside existing signingConfigs block
+    // Add release signing config that's only active when env vars are set
     if (!contents.includes("signingConfigs.release")) {
-      // Add release entry after debug entry in signingConfigs
       contents = contents.replace(
         /(signingConfigs\s*\{[\s\S]*?debug\s*\{[\s\S]*?\})([\s\S]*?\})/m,
         `$1
         release {
-            storeFile file(System.getenv("RELEASE_KEYSTORE_PATH") ?: "debug.keystore")
-            storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "android"
-            keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "androiddebugkey"
-            keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "android"
+            if (System.getenv("RELEASE_KEYSTORE_PATH")) {
+                storeFile file(System.getenv("RELEASE_KEYSTORE_PATH"))
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            }
         }
     }`
       );
 
-      // Point release buildType to release signing config
+      // Only apply signing config when keystore is present
+      // Replace the default debug signing on release with conditional signing
       contents = contents.replace(
         /(release\s*\{[^}]*?)signingConfig\s+signingConfigs\.debug/,
-        "$1signingConfig signingConfigs.release"
+        `$1signingConfig System.getenv("RELEASE_KEYSTORE_PATH") ? signingConfigs.release : null`
       );
     }
 
@@ -59,22 +74,22 @@ function withReleaseSigning(config) {
 }
 
 /**
- * Set versionCode from VERSION_CODE env var (CI sets this from the tag).
+ * Set deterministic versionCode derived from versionName.
  * Also disables dependency metadata block and PNG crunching for FOSS/reproducibility.
+ * Excludes all Google Play Services dependencies globally.
  */
 function withVersionCode(config) {
   return withAppBuildGradle(config, (mod) => {
     let contents = mod.modResults.contents;
 
-    // Replace static versionCode with env-var-based one for CI
+    // Derive versionCode from versionName for reproducibility
+    const versionCode = deriveVersionCode(config.version);
     contents = contents.replace(
       /versionCode\s+\d+/,
-      `versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "${config.android?.versionCode || 1}")`
+      `versionCode ${versionCode}`
     );
 
     // Disable dependency metadata (IzzyOnDroid/F-Droid requirement)
-    // This blob is encrypted with a Google public key and cannot be verified by anyone else.
-    // Insert inside the android.defaultConfig block (safe position for all Gradle versions)
     if (!contents.includes("dependenciesInfo")) {
       contents = contents.replace(
         /(buildTypes\s*\{)/,
@@ -82,17 +97,28 @@ function withVersionCode(config) {
       );
     }
 
-    // Disable PNG crunching — it's non-deterministic and breaks reproducible builds
+    // Disable PNG crunching — non-deterministic, breaks reproducible builds
     contents = contents.replace(
       /crunchPngs\s+enablePngCrunchInRelease\.toBoolean\(\)/,
       "crunchPngs false"
     );
 
-    // Note: We do NOT use configurations.all { exclude group: 'com.google.android.gms' }
-    // because blanket exclusion causes runtime ClassNotFoundException crashes.
-    // Instead, the expo-location patch removes the only direct GMS dependency (play-services-location)
-    // from expo-location's build.gradle. No other library in our dependency tree pulls in GMS,
-    // so no GMS bytecode ends up in the APK.
+    // Exclude all Google Play Services / GMS / Firebase dependencies globally (FOSS compliance)
+    // The expo-location patch replaces FLP with LocationManager, so GMS is not needed at runtime.
+    // This ensures no transitive dependency can pull GMS resources/manifest entries into the APK.
+    if (!contents.includes("exclude group: 'com.google.android.gms'")) {
+      contents = contents.replace(
+        /^(dependencies\s*\{)/m,
+        `// Exclude all Google Play Services / GMS dependencies globally (FOSS compliance)
+configurations.all {
+    exclude group: 'com.google.android.gms'
+    exclude group: 'com.google.firebase'
+    exclude group: 'com.google.android.play'
+}
+
+$1`
+      );
+    }
 
     mod.modResults.contents = contents;
     return mod;
@@ -100,7 +126,8 @@ function withVersionCode(config) {
 }
 
 /**
- * Add POST_NOTIFICATIONS permission and location foreground service to AndroidManifest
+ * Add POST_NOTIFICATIONS permission and location foreground service to AndroidManifest.
+ * Also strips all GMS-related manifest entries (activities, services, metadata).
  */
 function withLocationForegroundService(config) {
   return withAndroidManifest(config, (mod) => {
@@ -119,24 +146,43 @@ function withLocationForegroundService(config) {
     }
     manifest["uses-permission"] = permissions;
 
-    // Add foreground service for location if missing
+    // Clean up application entries
     const app = manifest.application?.[0];
     if (app) {
       if (!app.service) app.service = [];
 
-      // Remove GMS ModuleDependencies service injected by expo-image-picker (FOSS compliance)
-      // Izzy's scanner flags /com/google/android/gms as NonFreeComp
+      // Remove ALL GMS services/activities/meta-data from manifest
       app.service = app.service.filter(
-        (s) => s.$?.["android:name"] !== "com.google.android.gms.metadata.ModuleDependencies"
+        (s) => !s.$?.["android:name"]?.includes("com.google.android.gms")
       );
-      // Also add explicit removal via tools:node="remove" for manifest merger
+      if (app.activity) {
+        app.activity = app.activity.filter(
+          (a) => !a.$?.["android:name"]?.includes("com.google.android.gms")
+        );
+      }
+      if (app["meta-data"]) {
+        app["meta-data"] = app["meta-data"].filter(
+          (m) => !m.$?.["android:name"]?.includes("google_play_services")
+              && !m.$?.["android:name"]?.includes("com.google.android.gms")
+        );
+      }
+
+      // Add explicit tools:node="remove" entries for manifest merger
       app.service.push({
         $: {
           "android:name": "com.google.android.gms.metadata.ModuleDependencies",
           "tools:node": "remove",
         },
       });
+      if (!app.activity) app.activity = [];
+      app.activity.push({
+        $: {
+          "android:name": "com.google.android.gms.common.api.GoogleApiActivity",
+          "tools:node": "remove",
+        },
+      });
 
+      // Add location foreground service
       const hasLocationService = app.service.some(
         (s) =>
           s.$?.["android:foregroundServiceType"] === "location"
@@ -268,8 +314,8 @@ function withProguardGmsIgnore(config) {
       }
 
       const gmsRules = `
-# FOSS compliance: expo-location patch removes play-services-location dependency.
-# R8 may still see residual references from third-party libraries — ignore them.
+# FOSS compliance: GMS dependencies excluded via Gradle configurations.all { exclude }.
+# R8 may see residual references from third-party libraries — ignore them.
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.play.**`;

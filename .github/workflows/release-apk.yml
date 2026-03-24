@@ -127,8 +127,6 @@ jobs:
       - name: Regenerate native project
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
-        env:
-          VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: npx expo prebuild --clean --platform android
 
       - name: Re-apply patches after prebuild
@@ -178,6 +176,8 @@ jobs:
       - name: Bundle JS
         if: steps.changes.outputs.app_changed == 'true' || steps.reuse.outputs.reused == 'false'
         working-directory: findme-app
+        env:
+          NODE_ENV: production
         run: npx expo export --platform android
 
       - name: Build release APK
@@ -188,7 +188,7 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+          NODE_ENV: production
         run: ./gradlew assembleRelease --no-daemon --no-build-cache
 
       - name: Rename artifact
