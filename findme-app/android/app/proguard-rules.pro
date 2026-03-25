@@ -13,9 +13,9 @@
 
 # Add any project specific keep options here:
 
-# FOSS compliance: GMS is excluded via Gradle configurations.all { exclude }.
-# Tell R8 to ignore any residual references to GMS classes from third-party
-# libraries that may have soft/optional dependencies on Play Services.
+
+# FOSS compliance: GMS dependencies excluded via Gradle configurations.all { exclude }.
+# R8 may see residual references from third-party libraries — ignore them.
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.play.**
