@@ -9,16 +9,6 @@ echo ""
 # Ensure DATABASE_URL points to the writable data volume (use env var if set, otherwise default)
 export DATABASE_URL="${DATABASE_URL:-file:/app/data/findme.db}"
 
-# Migrate legacy database filename (dev.db → findme.db) for existing installations
-DB_PATH="${DATABASE_URL#file:}"
-if [ "$DB_PATH" = "/app/data/findme.db" ] && [ ! -f "/app/data/findme.db" ] && [ -f "/app/data/dev.db" ]; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] INF [startup] Migrating database: dev.db → findme.db"
-  mv /app/data/dev.db /app/data/findme.db
-  [ -f /app/data/dev.db-journal ] && mv /app/data/dev.db-journal /app/data/findme.db-journal
-  [ -f /app/data/dev.db-wal ] && mv /app/data/dev.db-wal /app/data/findme.db-wal
-  [ -f /app/data/dev.db-shm ] && mv /app/data/dev.db-shm /app/data/findme.db-shm
-fi
-
 # Auto-generate secrets if not provided by the user.
 # Generated secrets are persisted to the data volume so they survive container restarts.
 SECRETS_FILE="/app/data/.secrets"
