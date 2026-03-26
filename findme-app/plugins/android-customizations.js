@@ -103,22 +103,9 @@ function withVersionCode(config) {
       "crunchPngs false"
     );
 
-    // Exclude all Google Play Services / GMS / Firebase dependencies globally (FOSS compliance)
-    // The expo-location patch replaces FLP with LocationManager, so GMS is not needed at runtime.
-    // This ensures no transitive dependency can pull GMS resources/manifest entries into the APK.
-    if (!contents.includes("exclude group: 'com.google.android.gms'")) {
-      contents = contents.replace(
-        /^(dependencies\s*\{)/m,
-        `// Exclude all Google Play Services / GMS dependencies globally (FOSS compliance)
-configurations.all {
-    exclude group: 'com.google.android.gms'
-    exclude group: 'com.google.firebase'
-    exclude group: 'com.google.android.play'
-}
-
-$1`
-      );
-    }
+    // Note: expo-location patch removes play-services-location from its own build.gradle.
+    // We do NOT use a blanket configurations.all { exclude } here because other React Native
+    // internals may reference GMS classes at startup, causing ClassNotFoundException crashes.
 
     mod.modResults.contents = contents;
     return mod;
